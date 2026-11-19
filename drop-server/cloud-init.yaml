@@ -1,5 +1,5 @@
 #cloud-config
-# f3 drop server — Oracle Cloud, Ubuntu 24.04, Always Free micro VM.
+# f3 drop server - Oracle Cloud, Ubuntu 24.04, Always Free micro VM.
 # Paste this whole file into Oracle: Create instance > Advanced options > Management > Paste cloud-init script.
 # The page f3.sa/code fills in your server code for you ("Copy server setup script").
 # What it does: installs Node and Caddy (HTTPS for api.f3.sa), runs the drop server from
