@@ -1,5 +1,5 @@
 'use strict';
-// Server tests. Run: node --test drop-server/test/server.test.js
+// Server tests (v2 rooms). Run: node --test drop-server/test/server.test.js
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { spawn } = require('node:child_process');
@@ -9,135 +9,293 @@ const os = require('node:os');
 const path = require('node:path');
 
 const ORIGIN = 'https://f3.sa';
-const TOKEN = crypto.randomBytes(32).toString('base64url');
-const HASH = crypto.createHash('sha256').update(TOKEN).digest('hex');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'f3drop-'));
-const authFile = path.join(dir, 'auth');
-let proc;
-let base;
-
-function ivct(n = 40) {
-  return { iv: crypto.randomBytes(12).toString('base64url'), ct: crypto.randomBytes(n).toString('base64url') };
-}
-
-async function call(method, p, { token = TOKEN, body, origin = ORIGIN, raw } = {}) {
-  const headers = {};
-  if (token) headers.Authorization = 'Bearer ' + token;
-  if (origin) headers.Origin = origin;
-  if (body !== undefined || raw !== undefined) headers['Content-Type'] = 'application/json';
-  const r = await fetch(base + p, { method, headers, body: raw !== undefined ? raw : body !== undefined ? JSON.stringify(body) : undefined });
-  let json = null;
-  const text = await r.text();
-  try { json = JSON.parse(text); } catch (_) {}
-  return { status: r.status, json, headers: r.headers };
-}
-
+const SERVER = path.join(__dirname, '..', 'server.js');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const rnd = (n) => crypto.randomBytes(n).toString('base64url');
+const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
+
+function start(env) {
+  const dir = env.DATA_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'f3drop-'));
+  const proc = spawn(process.execPath, [SERVER], {
+    env: { ...process.env, PORT: '0', ALLOW_ORIGIN: ORIGIN, SWEEP_MS: '100', DATA_DIR: dir, ...env },
+  });
+  return new Promise((resolve, reject) => {
+    proc.stdout.once('data', (d) => {
+      const m = /:(\d+)/.exec(String(d));
+      if (!m) return reject(new Error('no port'));
+      resolve({ proc, dir, base: 'http://127.0.0.1:' + m[1] });
+    });
+    proc.once('exit', (c) => reject(new Error('exited ' + c)));
+  });
+}
+
+function stop(s) {
+  return new Promise((r) => { s.proc.once('exit', r); s.proc.kill('SIGTERM'); });
+}
+
+function client(s) {
+  return async function call(method, p, { token, body, origin = ORIGIN, raw, ip = 'ip-' + rnd(6) } = {}) {
+    const headers = { 'X-Forwarded-For': ip };
+    if (token) headers.Authorization = 'Bearer ' + token;
+    if (origin) headers.Origin = origin;
+    if (body !== undefined || raw !== undefined) headers['Content-Type'] = 'application/json';
+    const r = await fetch(s.base + p, { method, headers, body: raw !== undefined ? raw : body !== undefined ? JSON.stringify(body) : undefined });
+    const text = await r.text();
+    let json = null;
+    try { json = JSON.parse(text); } catch (_) {}
+    return { status: r.status, json, text, headers: r.headers };
+  };
+}
+
+const ivct = (n = 40) => ({ iv: rnd(12), ct: rnd(n) });
+const codeBox = () => ({ tag: rnd(32), iv: rnd(12), wrapped: rnd(48) });
+
+let A; let call;          // main server
+let B; let call2;         // second server: short room life, small caps, global lock
+const SEEN_IPS = [];
 
 before(async () => {
-  fs.writeFileSync(authFile, HASH + '\n');
-  proc = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, PORT: '0', AUTH_FILE: authFile, ALLOW_ORIGIN: ORIGIN, TTL_MS: '1500', SWEEP_MS: '100', MAX_ITEMS: '5', FAIL_LIMIT: '5', MAX_BODY: '4096' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  base = await new Promise((resolve, reject) => {
-    proc.stdout.on('data', (d) => {
-      const m = /listening on ([^:]+):(\d+)/.exec(String(d));
-      if (m) resolve(`http://127.0.0.1:${m[2]}`);
-    });
-    proc.on('exit', (c) => reject(new Error('server exited ' + c)));
-  });
+  A = await start({ ITEM_TTL_MS: '1500', CODE_TTL_MS: '1500', MAX_ITEMS: '5', MAX_BODY: '4096',
+    ROOMS_PER_IP_DAY: '4', JOIN_FAILS_PER_IP: '3', JOIN_FAILS_GLOBAL: '1000', AUTH_FAIL_LIMIT: '5', STATS_SAVE_MS: '200' });
+  call = client(A);
+  B = await start({ ROOM_TTL_MS: '1500', MAX_ROOMS: '3', JOIN_FAILS_PER_IP: '100', JOIN_FAILS_GLOBAL: '4', VISITS_PER_IP_DAY: '2' });
+  call2 = client(B);
+});
+after(async () => { await stop(A).catch(() => {}); await stop(B).catch(() => {}); });
+
+async function newRoom(c = call, dev = 'iphone', ip) {
+  const r = await c('POST', '/v1/rooms', { body: { dev }, ip });
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  return r.json;
+}
+
+async function pair(c = call) {
+  const a = await newRoom(c, 'iphone');
+  const box = codeBox();
+  const k = await c('POST', `/v1/rooms/${a.room}/code`, { token: a.token, body: box });
+  assert.equal(k.status, 201);
+  const j = await c('POST', '/v1/join', { body: { tag: box.tag, dev: 'windows' } });
+  assert.equal(j.status, 200, JSON.stringify(j.json));
+  return { a, b: j.json, box };
+}
+
+test('health, origin check, CORS', async () => {
+  const h = await call('GET', '/health');
+  assert.equal(h.status, 200);
+  assert.equal(h.json.ok, true);
+  assert.equal(h.json.v, 2);
+  assert.equal(h.json.stats, false);
+  assert.equal((await call('GET', '/health', { origin: 'https://evil.example' })).status, 403);
+  const o = await call('OPTIONS', '/v1/rooms');
+  assert.equal(o.status, 204);
+  assert.equal(o.headers.get('access-control-allow-origin'), ORIGIN);
+  assert.match(o.headers.get('access-control-allow-methods'), /DELETE/);
 });
 
-after(() => { proc.kill('SIGTERM'); });
-
-test('health needs no login and reports ready', async () => {
-  const r = await call('GET', '/health', { token: null });
-  assert.equal(r.status, 200);
-  assert.equal(r.json.ready, true);
+test('new room: own id and token, lasts 24 hours, starts empty', async () => {
+  const a = await newRoom();
+  assert.match(a.room, /^[A-Za-z0-9_-]{16}$/);
+  assert.match(a.token, /^[A-Za-z0-9_-]{43}$/);
+  assert.ok(Math.abs(a.expires - (a.now + 24 * 3600 * 1000)) < 1000);
+  const v = await call('GET', `/v1/rooms/${a.room}`, { token: a.token });
+  assert.equal(v.status, 200);
+  assert.equal(v.json.me, 'iphone');
+  assert.deepEqual(v.json.others, []);
+  assert.deepEqual(v.json.items, []);
+  assert.equal(v.json.code, null);
+  assert.equal((await call('GET', `/v1/rooms/${a.room}`, { token: rnd(32) })).status, 401);
+  assert.equal((await call('GET', `/v1/rooms/${rnd(12)}`, { token: a.token })).status, 404);
+  assert.equal((await call('GET', `/v1/rooms/${a.room}`)).status, 401);
 });
 
-test('T4: no token or a wrong token is refused (401)', async () => {
-  assert.equal((await call('GET', '/v1/items', { token: null })).status, 401);
-  assert.equal((await call('GET', '/v1/items', { token: crypto.randomBytes(32).toString('base64url') })).status, 401);
-  assert.equal((await call('POST', '/v1/items', { token: null, body: ivct() })).status, 401);
-  assert.equal((await call('DELETE', '/v1/items', { token: null })).status, 401);
+test('pair with a code: both see each other; code works once', async () => {
+  const { a, b, box } = await pair();
+  assert.equal(b.room, a.room);
+  assert.equal(b.iv, box.iv);
+  assert.equal(b.wrapped, box.wrapped);
+  assert.notEqual(b.token, a.token);
+  const va = await call('GET', `/v1/rooms/${a.room}`, { token: a.token });
+  const vb = await call('GET', `/v1/rooms/${a.room}`, { token: b.token });
+  assert.deepEqual(va.json.others.map((o) => o.dev), ['windows']);
+  assert.deepEqual(vb.json.others.map((o) => o.dev), ['iphone']);
+  assert.equal(va.json.code, null, 'code is used up');
+  assert.ok(!/tok/.test(va.text + vb.text), 'no device tokens in room view');
+  const again = await call('POST', '/v1/join', { body: { tag: box.tag, dev: 'mac' } });
+  assert.equal(again.status, 404, 'same code cannot be used twice');
 });
 
-test('other websites are refused (403) and CORS is f3.sa only', async () => {
-  const r = await call('GET', '/v1/items', { origin: 'https://evil.example' });
-  assert.equal(r.status, 403);
-  const ok = await call('GET', '/v1/items');
-  assert.equal(ok.headers.get('access-control-allow-origin'), ORIGIN);
-  assert.equal(ok.headers.get('cache-control'), 'no-store');
-});
-
-test('create, list, delete one; second delete says gone (T5/T12 server side)', async () => {
-  const a = await call('POST', '/v1/items', { body: ivct() });
-  assert.equal(a.status, 201);
-  const list = await call('GET', '/v1/items');
-  assert.ok(list.json.items.some((i) => i.id === a.json.id));
-  assert.equal((await call('DELETE', '/v1/items/' + a.json.id)).status, 204);
-  assert.equal((await call('DELETE', '/v1/items/' + a.json.id)).status, 404);
-  const after = await call('GET', '/v1/items');
-  assert.ok(!after.json.items.some((i) => i.id === a.json.id));
-});
-
-test('T15: an item nobody copies is gone after its time (TTL)', async () => {
-  const a = await call('POST', '/v1/items', { body: ivct() });
-  assert.equal(a.status, 201);
-  assert.ok(a.json.expires - a.json.created === 1500);
+test('code expires after its time', async () => {
+  const a = await newRoom();
+  const box = codeBox();
+  await call('POST', `/v1/rooms/${a.room}/code`, { token: a.token, body: box });
   await sleep(1800);
-  const list = await call('GET', '/v1/items');
-  assert.ok(!list.json.items.some((i) => i.id === a.json.id));
+  assert.equal((await call('POST', '/v1/join', { body: { tag: box.tag } })).status, 404);
 });
 
-test('T10: too big is refused (413); bad shape is refused (400)', async () => {
-  assert.equal((await call('POST', '/v1/items', { body: ivct(5000) })).status, 413);
-  assert.equal((await call('POST', '/v1/items', { body: { iv: 'x', ct: 'y' } })).status, 400);
-  assert.equal((await call('POST', '/v1/items', { raw: '{not json' })).status, 400);
-  assert.equal((await call('POST', '/v1/items', { body: { iv: 'a'.repeat(16), ct: 'plain text <script>' } })).status, 400);
+test('two devices per room: a new join replaces the old partner', async () => {
+  const { a, b } = await pair();
+  const box = codeBox();
+  assert.equal((await call('POST', `/v1/rooms/${a.room}/code`, { token: a.token, body: box })).status, 201);
+  const c = await call('POST', '/v1/join', { body: { tag: box.tag, dev: 'mac' } });
+  assert.equal(c.status, 200);
+  assert.equal((await call('GET', `/v1/rooms/${a.room}`, { token: b.token })).status, 401, 'old partner is out');
+  const va = await call('GET', `/v1/rooms/${a.room}`, { token: a.token });
+  assert.deepEqual(va.json.others.map((o) => o.dev), ['mac']);
 });
 
-test('inbox cap (409) and delete-all', async () => {
-  for (let i = 0; i < 5; i++) assert.equal((await call('POST', '/v1/items', { body: ivct() })).status, 201);
-  assert.equal((await call('POST', '/v1/items', { body: ivct() })).status, 409);
-  assert.equal((await call('DELETE', '/v1/items')).status, 204);
-  assert.equal((await call('GET', '/v1/items')).json.items.length, 0);
+test('same code in two rooms at once is refused (pick another)', async () => {
+  const a = await newRoom();
+  const b = await newRoom();
+  const box = codeBox();
+  assert.equal((await call('POST', `/v1/rooms/${a.room}/code`, { token: a.token, body: box })).status, 201);
+  assert.equal((await call('POST', `/v1/rooms/${b.room}/code`, { token: b.token, body: box })).status, 409);
 });
 
-test('T2: the server only holds what it was given (no plaintext, no key)', async () => {
-  const sent = ivct();
-  const a = await call('POST', '/v1/items', { body: sent });
-  const it = (await call('GET', '/v1/items')).json.items.find((i) => i.id === a.json.id);
-  assert.deepEqual(Object.keys(it).sort(), ['created', 'ct', 'expires', 'id', 'iv']);
-  assert.equal(it.ct, sent.ct);
-  await call('DELETE', '/v1/items');
+test('send, list, copy-delete: gone for both devices', async () => {
+  const { a, b } = await pair();
+  const s = await call('POST', `/v1/rooms/${a.room}/items`, { token: b.token, body: ivct() });
+  assert.equal(s.status, 201);
+  const la = await call('GET', `/v1/rooms/${a.room}`, { token: a.token });
+  assert.equal(la.json.items.length, 1);
+  assert.equal(la.json.items[0].id, s.json.id);
+  assert.equal((await call('DELETE', `/v1/rooms/${a.room}/items/${s.json.id}?copied=1`, { token: a.token })).status, 204);
+  assert.equal((await call('GET', `/v1/rooms/${a.room}`, { token: b.token })).json.items.length, 0);
+  assert.equal((await call('DELETE', `/v1/rooms/${a.room}/items/${s.json.id}`, { token: b.token })).status, 404);
 });
 
-test('rotate: old link stops, new link works, items cleared, hash saved to disk', async () => {
-  await call('POST', '/v1/items', { body: ivct() });
-  const NEW = crypto.randomBytes(32).toString('base64url');
-  const NEWHASH = crypto.createHash('sha256').update(NEW).digest('hex');
-  assert.equal((await call('POST', '/v1/rotate', { body: { hash: 'nothex' } })).status, 400);
-  assert.equal((await call('POST', '/v1/rotate', { body: { hash: NEWHASH } })).status, 204);
-  assert.equal((await call('GET', '/v1/items')).status, 401);
-  const r = await call('GET', '/v1/items', { token: NEW });
-  assert.equal(r.status, 200);
-  assert.equal(r.json.items.length, 0);
-  assert.equal(fs.readFileSync(authFile, 'utf8').trim(), NEWHASH);
-  // rotate back for the remaining tests
-  assert.equal((await call('POST', '/v1/rotate', { token: NEW, body: { hash: HASH } })).status, 204);
+test('uncopied items are gone after the item time', async () => {
+  const { a } = await pair();
+  await call('POST', `/v1/rooms/${a.room}/items`, { token: a.token, body: ivct() });
+  await sleep(1800);
+  assert.equal((await call('GET', `/v1/rooms/${a.room}`, { token: a.token })).json.items.length, 0);
 });
 
-test('too many wrong tries from one place are blocked (429); other places are not affected', async () => {
-  const bad = crypto.randomBytes(32).toString('base64url');
-  const headers = { 'X-Forwarded-For': '203.0.113.9' };
-  let last;
-  for (let i = 0; i < 6; i++) {
-    last = await fetch(base + '/v1/items', { headers: { ...headers, Authorization: 'Bearer ' + bad, Origin: ORIGIN } });
+test('rooms are separate: another room cannot see or delete items', async () => {
+  const one = await pair();
+  const two = await pair();
+  const s = await call('POST', `/v1/rooms/${one.a.room}/items`, { token: one.a.token, body: ivct() });
+  assert.equal((await call('GET', `/v1/rooms/${one.a.room}`, { token: two.a.token })).status, 401);
+  assert.equal((await call('DELETE', `/v1/rooms/${one.a.room}/items/${s.json.id}`, { token: two.b.token })).status, 401);
+  assert.equal((await call('GET', `/v1/rooms/${two.a.room}`, { token: two.a.token })).json.items.length, 0);
+});
+
+test('size and shape limits', async () => {
+  const a = await newRoom();
+  const t = { token: a.token };
+  assert.equal((await call('POST', `/v1/rooms/${a.room}/items`, { ...t, body: ivct(5000) })).status, 413);
+  assert.equal((await call('POST', `/v1/rooms/${a.room}/items`, { ...t, body: { iv: 'short', ct: rnd(40) } })).status, 400);
+  assert.equal((await call('POST', `/v1/rooms/${a.room}/items`, { ...t, raw: '{bad' })).status, 400);
+  assert.equal((await call('POST', `/v1/rooms/${a.room}/code`, { ...t, body: { tag: 'x', iv: rnd(12), wrapped: rnd(48) } })).status, 400);
+  for (let i = 0; i < 5; i++) assert.equal((await call('POST', `/v1/rooms/${a.room}/items`, { ...t, body: ivct() })).status, 201);
+  assert.equal((await call('POST', `/v1/rooms/${a.room}/items`, { ...t, body: ivct() })).status, 409, 'room full');
+});
+
+test('new rooms per network per day are limited', async () => {
+  const ip = 'ip-rooms-limit';
+  for (let i = 0; i < 4; i++) await newRoom(call, 'mac', ip);
+  assert.equal((await call('POST', '/v1/rooms', { body: { dev: 'mac' }, ip })).status, 429);
+  assert.equal((await call('POST', '/v1/rooms', { body: { dev: 'mac' }, ip: 'ip-other' })).status, 201);
+});
+
+test('wrong codes lock joining for that network', async () => {
+  const ip = 'ip-guesser';
+  for (let i = 0; i < 3; i++) assert.equal((await call('POST', '/v1/join', { body: { tag: rnd(32) }, ip })).status, 404);
+  const a = await newRoom();
+  const box = codeBox();
+  await call('POST', `/v1/rooms/${a.room}/code`, { token: a.token, body: box });
+  assert.equal((await call('POST', '/v1/join', { body: { tag: box.tag }, ip })).status, 429, 'locked even with the right code');
+  assert.equal((await call('POST', '/v1/join', { body: { tag: box.tag }, ip: 'ip-honest' })).status, 200, 'others still join');
+});
+
+test('bad device tokens lock that network', async () => {
+  const a = await newRoom();
+  const ip = 'ip-token-guesser';
+  for (let i = 0; i < 5; i++) await call('GET', `/v1/rooms/${a.room}`, { token: rnd(32), ip });
+  assert.equal((await call('GET', `/v1/rooms/${a.room}`, { token: a.token, ip })).status, 429);
+  assert.equal((await call('GET', `/v1/rooms/${a.room}`, { token: a.token })).status, 200);
+});
+
+test('end room: gone for both devices', async () => {
+  const { a, b } = await pair();
+  assert.equal((await call('DELETE', `/v1/rooms/${a.room}`, { token: b.token })).status, 204);
+  assert.equal((await call('GET', `/v1/rooms/${a.room}`, { token: a.token })).status, 404);
+  assert.equal((await call('GET', `/v1/rooms/${a.room}`, { token: b.token })).status, 404);
+});
+
+test('stats: claim once, counts only, no addresses or content', async () => {
+  const tok = rnd(32);
+  assert.equal((await call('POST', '/v1/stats/claim', { body: { hash: sha(tok) } })).status, 201);
+  assert.equal((await call('POST', '/v1/stats/claim', { body: { hash: sha(rnd(32)) } })).status, 409, 'second claim refused');
+  assert.equal((await call('GET', '/health')).json.stats, true);
+  for (const dev of ['iphone', 'iphone', 'windows', 'nonsense']) {
+    const ip = 'ip-visit-' + rnd(4);
+    SEEN_IPS.push(ip);
+    assert.equal((await call('POST', '/v1/hello', { body: { dev }, ip })).status, 204);
   }
-  assert.equal(last.status, 429);
-  const other = await call('GET', '/v1/items');
-  assert.equal(other.status, 200, 'a different IP is not affected');
+  const { a } = await pair();
+  const s = await call('POST', `/v1/rooms/${a.room}/items`, { token: a.token, body: ivct() });
+  await call('DELETE', `/v1/rooms/${a.room}/items/${s.json.id}?copied=1`, { token: a.token });
+  assert.equal((await call('GET', '/v1/stats', { token: rnd(32) })).status, 401);
+  const r = await call('GET', '/v1/stats', { token: tok });
+  assert.equal(r.status, 200);
+  const today = r.json.days[0];
+  assert.equal(today.visits, 4);
+  assert.equal(today.dev.iphone, 2);
+  assert.equal(today.dev.windows, 1);
+  assert.equal(today.dev.other, 1);
+  for (const k of ['rooms', 'joins', 'wrong', 'sent', 'copied', 'expired', 'ended', 'limited']) {
+    assert.ok(today[k] >= 1, k + ' counted');
+  }
+  assert.ok(r.json.live.rooms >= 1);
+  for (const ip of SEEN_IPS) assert.ok(!r.text.includes(ip), 'no addresses in stats');
+  assert.ok(!r.text.includes('127.0.0.1'));
+});
+
+test('stats survive a restart; content does not', async () => {
+  const before = await call('GET', '/health');
+  assert.equal(before.json.stats, true);
+  const { a } = await pair();
+  await call('POST', `/v1/rooms/${a.room}/items`, { token: a.token, body: ivct() });
+  await sleep(400);
+  await stop(A);
+  const file = fs.readFileSync(path.join(A.dir, 'stats.json'), 'utf8');
+  for (const ip of SEEN_IPS) assert.ok(!file.includes(ip), 'no addresses on disk');
+  assert.deepEqual(fs.readdirSync(A.dir).sort(), ['stats-auth', 'stats.json'], 'nothing else written to disk');
+  A = await start({ DATA_DIR: A.dir });
+  call = client(A);
+  assert.equal((await call('GET', '/health')).json.stats, true, 'claim kept');
+  assert.equal((await call('GET', `/v1/rooms/${a.room}`, { token: a.token })).status, 404, 'rooms are memory only');
+});
+
+test('server 2: rooms end after the room time', async () => {
+  const a = await newRoom(call2);
+  assert.equal((await call2('GET', `/v1/rooms/${a.room}`, { token: a.token })).status, 200);
+  await sleep(1800);
+  assert.equal((await call2('GET', `/v1/rooms/${a.room}`, { token: a.token })).status, 404);
+});
+
+test('server 2: live room cap', async () => {
+  for (let i = 0; i < 3; i++) await newRoom(call2);
+  assert.equal((await call2('POST', '/v1/rooms', { body: {} })).status, 503);
+  await sleep(1800);
+  assert.equal((await call2('POST', '/v1/rooms', { body: {} })).status, 201, 'space again after rooms end');
+});
+
+test('server 2: wrong codes from everyone pause joining for everyone', async () => {
+  for (let i = 0; i < 4; i++) await call2('POST', '/v1/join', { body: { tag: rnd(32) } });
+  assert.equal((await call2('POST', '/v1/join', { body: { tag: rnd(32) } })).status, 429);
+});
+
+test('server 2: visits per network per day are capped', async () => {
+  const tok = rnd(32);
+  await call2('POST', '/v1/stats/claim', { body: { hash: sha(tok) } });
+  for (let i = 0; i < 5; i++) await call2('POST', '/v1/hello', { body: { dev: 'mac' }, ip: 'ip-refresher' });
+  const r = await call2('GET', '/v1/stats', { token: tok });
+  assert.equal(r.json.days[0].visits, 2);
+});
+
+test('setup script is plain ASCII (Oracle console rejects other characters)', () => {
+  const t = fs.readFileSync(path.join(__dirname, '..', 'cloud-init.yaml'), 'utf8');
+  assert.ok(!/[^\x00-\x7F]/.test(t), 'non-ASCII character in cloud-init.yaml');
+  assert.ok(!t.includes('PASTE_SERVER_CODE_HERE'), 'v2 needs nothing pasted in');
 });

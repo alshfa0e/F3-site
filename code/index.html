@@ -10,6 +10,7 @@
 <title>Drop</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="app.css">
+<script src="theme.js"></script>
 <script src="prism.js" data-manual></script>
 <script type="module" src="app.js"></script>
 </head>
@@ -17,34 +18,40 @@
 <main class="wrap">
   <header class="bar">
     <h1>Drop</h1>
-    <span id="status" class="status" aria-live="polite"></span>
+    <div class="right">
+      <span id="status" class="status" aria-live="polite"></span>
+      <button id="themeBtn" class="theme" type="button" aria-label="Theme">Auto</button>
+    </div>
   </header>
 
-  <section id="start" hidden>
-    <p id="startMsg">Open your private link to see your inbox.</p>
-    <label for="linkIn">Your private link or key</label>
-    <input id="linkIn" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX">
-    <button id="openBtn" class="btn" type="button">Open</button>
-    <details class="first">
-      <summary>First time? Create your link</summary>
-      <p class="muted">This makes a new private link on this device. Nothing is sent anywhere.</p>
-      <button id="createBtn" class="btn line" type="button">Create my link</button>
-    </details>
+  <section id="msg" hidden>
+    <p id="msgText">Starting…</p>
+    <button id="retryBtn" class="btn" type="button" hidden>Try again</button>
   </section>
 
-  <section id="setup" hidden>
-    <h2 id="setupTitle">Your private link</h2>
-    <p class="warn">Anyone with this link can use your inbox. Save it as a bookmark on each device. Do not send it in chats or email.</p>
-    <code id="newLink" class="box"></code>
-    <button id="copyLink" class="btn line" type="button">Copy link</button>
-    <h3>Server code</h3>
-    <p class="muted">Used only in the Oracle setup step. It cannot open anything.</p>
-    <code id="newCode" class="box small"></code>
-    <button id="copySetup" class="btn line" type="button">Copy server setup script</button>
-    <button id="goNew" class="btn" type="button">Open my inbox</button>
-  </section>
+  <section id="room" hidden>
+    <div id="pairBox" class="pair">
+      <p class="muted">Your code</p>
+      <p id="code" class="code" aria-live="polite">····</p>
+      <p id="codeHint" class="muted">Type it on your other device at f3.sa/code</p>
+      <div class="row2">
+        <button id="shareBtn" class="btn line small" type="button">Share link</button>
+        <button id="newCodeBtn" class="btn line small" type="button">New code</button>
+      </div>
+      <div class="join">
+        <label for="joinIn">Have a code from another device?</label>
+        <div class="row2">
+          <input id="joinIn" type="text" inputmode="text" maxlength="9" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="K7QH" aria-label="Code">
+          <button id="joinBtn" class="btn small" type="button">Join</button>
+        </div>
+      </div>
+    </div>
 
-  <section id="inbox" hidden>
+    <div id="pairedBox" class="paired" hidden>
+      <p><span class="dot"></span>Paired with <b id="pairedName">your other device</b></p>
+      <button id="notMeBtn" class="btn line small danger" type="button">Not me – end room</button>
+    </div>
+
     <div class="compose">
       <textarea id="paste" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" placeholder="Paste code here" aria-label="Code to send"></textarea>
       <div class="row">
@@ -70,12 +77,40 @@
     </div>
     <p id="empty" class="muted">Nothing here.</p>
     <ul id="list" class="list"></ul>
+
     <details class="settings">
-      <summary>Settings</summary>
-      <button id="wipeBtn" class="btn line" type="button">Delete everything now</button>
-      <button id="rotateBtn" class="btn line danger" type="button">Make a new link (old one stops working)</button>
-      <button id="setupAgain" class="btn line" type="button">Copy server setup script (for a rebuild)</button>
+      <summary>Room</summary>
+      <p id="roomLeft" class="muted"></p>
+      <button id="newCodeBtn2" class="btn line" type="button">New code (a new device replaces the paired one)</button>
+      <div class="join">
+        <label for="joinIn2">Join another room</label>
+        <div class="row2">
+          <input id="joinIn2" type="text" maxlength="9" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="Code" aria-label="Code">
+          <button id="joinBtn2" class="btn line small" type="button">Join</button>
+        </div>
+      </div>
+      <button id="endBtn" class="btn line danger" type="button">End room now</button>
     </details>
+  </section>
+
+  <section id="stats" hidden>
+    <h2>Stats</h2>
+    <div id="statsClaim" hidden>
+      <p class="muted">Stats are not set up yet. This makes one private link that opens them.</p>
+      <button id="claimBtn" class="btn" type="button">Make my stats link</button>
+    </div>
+    <p id="statsLocked" class="muted" hidden>Open your saved stats link to see stats.</p>
+    <div id="statsLink" hidden>
+      <p class="warn">Save this link as a bookmark. It is the only way to open stats.</p>
+      <code id="statsUrl" class="box"></code>
+      <button id="copyStats" class="btn line" type="button">Copy link</button>
+    </div>
+    <div id="statsBody" hidden>
+      <p id="live" class="live"></p>
+      <ul id="days" class="days"></ul>
+      <p class="muted">Counts only. No addresses, no content. Kept 30 days.</p>
+    </div>
+    <p><a href="./" class="muted">Back to Drop</a></p>
   </section>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>

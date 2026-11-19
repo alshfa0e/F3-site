@@ -1,10 +1,11 @@
 #cloud-config
-# f3 drop server — Oracle Cloud, Ubuntu 24.04, Always Free micro VM.
+# f3 drop server - Oracle Cloud, Ubuntu 24.04, Always Free micro VM.
 # Paste this whole file into Oracle: Create instance > Advanced options > Management > Paste cloud-init script.
-# The page f3.sa/code fills in your server code for you ("Copy server setup script").
+# Paste it exactly as it is. Nothing needs filling in.
 # What it does: installs Node and Caddy (HTTPS for api.f3.sa), runs the drop server from
 # GitHub main, opens ports 80/443, keeps Ubuntu security updates on, and checks for
 # server updates every 15 minutes. No swap and no core dumps, so snippets stay in memory only.
+# The only files the server writes: /var/lib/f3drop/stats.json (counts) and stats-auth (a hash).
 
 package_update: true
 package_upgrade: true
@@ -18,10 +19,6 @@ packages:
   - unattended-upgrades
 
 write_files:
-  - path: /etc/f3drop/server-code
-    permissions: '0600'
-    content: |
-      PASTE_SERVER_CODE_HERE
   - path: /etc/f3drop/Caddyfile
     permissions: '0644'
     content: |
@@ -36,7 +33,7 @@ write_files:
     permissions: '0644'
     content: |
       [Unit]
-      Description=f3 drop (memory-only encrypted snippets)
+      Description=f3 drop v2 (daily rooms, memory-only encrypted snippets)
       After=network-online.target
       Wants=network-online.target
 
@@ -45,7 +42,7 @@ write_files:
       Group=f3drop
       Environment=PORT=8787
       Environment=HOST=127.0.0.1
-      Environment=AUTH_FILE=/var/lib/f3drop/auth
+      Environment=DATA_DIR=/var/lib/f3drop
       Environment=ALLOW_ORIGIN=https://f3.sa
       ExecStart=/usr/bin/node /opt/f3drop/server.js
       Restart=always
@@ -121,7 +118,7 @@ runcmd:
   - [sh, -c, 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y caddy']
   - [sh, -c, 'install -m 0644 /etc/f3drop/Caddyfile /etc/caddy/Caddyfile']
   - [sh, -c, 'id f3drop >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin f3drop']
-  - [sh, -c, 'mkdir -p /opt/f3drop /var/lib/f3drop && tr -d " \n\r\t" < /etc/f3drop/server-code > /var/lib/f3drop/auth && chown -R f3drop:f3drop /var/lib/f3drop && chmod 700 /var/lib/f3drop && chmod 600 /var/lib/f3drop/auth']
+  - [sh, -c, 'mkdir -p /opt/f3drop /var/lib/f3drop && chown -R f3drop:f3drop /var/lib/f3drop && chmod 700 /var/lib/f3drop']
   - [sh, -c, 'curl -fsSL --retry 5 https://raw.githubusercontent.com/alshfa0e/F3-site/main/drop-server/server.js -o /opt/f3drop/server.js']
   - [sh, -c, 'iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT && iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT && (netfilter-persistent save || true)']
   - [sh, -c, 'systemctl daemon-reload && systemctl enable --now f3drop f3drop-update.timer && systemctl restart caddy']
