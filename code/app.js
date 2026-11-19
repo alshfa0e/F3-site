@@ -23,8 +23,10 @@ const el = {
   copyLink: $('copyLink'), newCode: $('newCode'), copySetup: $('copySetup'), goNew: $('goNew'),
   inbox: $('inbox'), paste: $('paste'), lang: $('lang'), size: $('size'), sendBtn: $('sendBtn'),
   empty: $('empty'), list: $('list'), wipeBtn: $('wipeBtn'), rotateBtn: $('rotateBtn'),
-  setupAgain: $('setupAgain'), toast: $('toast'),
+  setupAgain: $('setupAgain'), toast: $('toast'), readyNote: $('readyNote'), firstBox: $('firstBox'),
+  shareBtn: $('shareBtn'),
 };
+const BAD_LINK_MSG = 'This link is not the one your server knows. Open the link you saved during setup (or the newest one, if you made a new link in Settings).';
 
 let keys = null;          // { secret, aesKey, token, serverCode } for the open link
 let pendingKeys = null;   // keys shown on the setup screen
@@ -145,7 +147,26 @@ function showStart(msg) {
   clearCards();
   setStatus('');
   el.startMsg.textContent = msg || 'Open your private link to see your inbox.';
+  el.readyNote.hidden = true;
+  el.firstBox.hidden = true;
   show('start');
+  checkServerReady();
+}
+
+// Once the server holds a link, a new link made here cannot work, so hide "Create".
+// "#setup" in the address shows it anyway (for building a new server).
+function checkServerReady() {
+  const forceSetup = location.hash === '#setup';
+  fetch(API + '/health', { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)
+    .then((h) => {
+      if (keys) return;
+      const ready = !!(h && h.ready);
+      el.readyNote.hidden = !ready || forceSetup;
+      el.firstBox.hidden = ready && !forceSetup;
+      if (forceSetup) el.firstBox.open = true;
+    });
 }
 
 function showSetup(k, rotated) {
@@ -287,7 +308,7 @@ async function poll() {
     if (keys !== myKeys) return;
     if (r.status === 401) {
       setStatus('bad');
-      showStart('This link does not work. It may have been replaced by a new one.');
+      showStart(BAD_LINK_MSG);
       return;
     }
     if (r.status === 429) { setStatus('off'); return; }
@@ -372,7 +393,7 @@ async function sendNow() {
       poll();
     } else if (r.status === 413) toast('Too big. Max 256 KB.');
     else if (r.status === 409) toast('Inbox full. Copy or delete some first.');
-    else if (r.status === 401) showStart('This link does not work. It may have been replaced by a new one.');
+    else if (r.status === 401) showStart(BAD_LINK_MSG);
     else toast('Could not send. Try again.');
   } catch (_) {
     toast('Cannot reach the server.');
@@ -431,6 +452,17 @@ twoTap(el.rotateBtn, 'Make a new link (old one stops working)', async () => {
 });
 
 el.setupAgain.addEventListener('click', () => { if (keys) copySetupScript(keys.serverCode); });
+
+// Hand the link to another of your devices. On iPhone and Mac the share sheet offers AirDrop.
+el.shareBtn.addEventListener('click', () => {
+  if (!keys) return;
+  const link = linkFor(keys.secret);
+  if (navigator.share) {
+    navigator.share({ title: 'Drop', url: link }).catch(() => {});
+    return;
+  }
+  copyText(link).then((ok) => toast(ok ? 'Link copied. Paste it on your other device, then bookmark it.' : 'Copy was blocked.'));
+});
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && keys) poll();

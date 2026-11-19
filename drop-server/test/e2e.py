@@ -172,7 +172,7 @@ try:
         wpage = wctx.new_page()
         wpage.goto(f"{SITE}/code/#{wrong['secret']}")
         wpage.wait_for_selector("#start:not([hidden])", timeout=8000)
-        check("T3 wrong link: refused, nothing listed", "does not work" in wpage.inner_text("#startMsg") and wpage.locator(".card").count() == 0)
+        check("T3 wrong link: refused with a clear message, nothing listed", "not the one your server knows" in wpage.inner_text("#startMsg") and wpage.locator(".card").count() == 0)
         wctx.close()
 
         # First-time setup on a fresh device: link + server code + setup script
@@ -180,7 +180,11 @@ try:
         spage = sctx.new_page()
         spage.goto(f"{SITE}/code/")
         spage.wait_for_selector("#start:not([hidden])")
-        spage.click("details.first summary")
+        ready = wait_for(lambda: spage.locator("#readyNote").is_visible(), timeout=5)
+        check("Server already set up: 'Create my link' is hidden and the note explains why",
+              ready is not None and not spage.locator("#firstBox").is_visible())
+        spage.goto(f"{SITE}/code/#setup")
+        spage.wait_for_selector("#firstBox:not([hidden])", timeout=5000)
         spage.click("#createBtn")
         spage.wait_for_selector("#setup:not([hidden])")
         new_link = spage.inner_text("#newLink")
@@ -192,6 +196,15 @@ try:
         check("Setup: makes a link and a 64-character server code", "/code/#" in new_link and len(new_code) == 64)
         check("Setup: copied script has the server code filled in", new_code in script and "PASTE_SERVER_CODE_HERE" not in script and script.startswith("#cloud-config"))
         sctx.close()
+
+        # Send the link to another device (no share sheet here, so it copies)
+        laptop.evaluate("Object.defineProperty(navigator, 'share', { value: undefined, configurable: true })")
+        laptop.click("details.settings summary")
+        laptop.click("#shareBtn")
+        time.sleep(0.4)
+        shared = laptop.evaluate("navigator.clipboard.readText()")
+        check("'Send this link to my other device' hands over the working link", shared == link)
+        laptop.click("details.settings summary")
 
         # T6/T15: expiry (restart the server with a 3-second life)
         srv.terminate(); srv.wait()

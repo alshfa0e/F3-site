@@ -25,9 +25,10 @@
     <label for="linkIn">Your private link or key</label>
     <input id="linkIn" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX">
     <button id="openBtn" class="btn" type="button">Open</button>
-    <details class="first">
+    <p id="readyNote" class="warn" hidden>Your server is already set up, so only your saved link works. Open it from your bookmark, or send it here from your other device with <b>Settings → Send this link to my other device</b>.</p>
+    <details id="firstBox" class="first" hidden>
       <summary>First time? Create your link</summary>
-      <p class="muted">This makes a new private link on this device. Nothing is sent anywhere.</p>
+      <p class="muted">Only for setting up a new server. A link made here works only after its setup script runs on the server.</p>
       <button id="createBtn" class="btn line" type="button">Create my link</button>
     </details>
   </section>
@@ -72,6 +73,8 @@
     <ul id="list" class="list"></ul>
     <details class="settings">
       <summary>Settings</summary>
+      <button id="shareBtn" class="btn line" type="button">Send this link to my other device</button>
+      <p class="muted">On iPhone and Mac, choose <b>AirDrop</b>: it goes straight between your devices. Avoid chat apps and email.</p>
       <button id="wipeBtn" class="btn line" type="button">Delete everything now</button>
       <button id="rotateBtn" class="btn line danger" type="button">Make a new link (old one stops working)</button>
       <button id="setupAgain" class="btn line" type="button">Copy server setup script (for a rebuild)</button>

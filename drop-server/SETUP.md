@@ -7,8 +7,8 @@ Your code is locked on your device before it leaves. The server only ever holds 
 Merge the pull request. The page goes live at `https://f3.sa/code/` within a few minutes.
 
 ## 1. Make your link (on your phone)
-1. Open `https://f3.sa/code/`.
-2. Tap **First time? Create your link**, then **Create my link**.
+1. Open `https://f3.sa/code/#setup` (the `#setup` shows the create button; it is hidden once a server is running).
+2. Tap **Create my link**.
 3. Tap **Copy link**, open it, and save it as a bookmark. This link is your key. Do not send it in chats or email.
 4. Tap **Copy server setup script**. Keep it for step 2.7 (it holds only the server code, which cannot open anything).
 
@@ -34,7 +34,8 @@ Where you manage the f3.sa domain, add one record: type **A**, name **api**, val
 
 ## 5. Use it
 - **Phone:** open your bookmark.
-- **Laptop:** open `https://f3.sa/code/`, type your key once (the 25 characters after `#`), tap **Open**, then bookmark the page.
+- **Other devices:** on the phone open **Settings → Send this link to my other device** and choose **AirDrop** (or type the 25-character key once on the other device). Then bookmark it there.
+- **Only one link works:** the one whose setup script is on the server, or the newest one made with **Settings → Make a new link**. A link made with **Create my link** later is not known to the server.
 
 ## 6. Safety net
 - Oracle → **Billing** → **Budgets** → create a budget of 1 USD with an email alert.
