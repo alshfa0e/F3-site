@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>نموذج متجر الحلويات</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Reem+Kufi:wght@700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: one column on the phone, order path always one tap away (sticky bar), occasion-first catalogue. Three light themes, switched from the header. */
+:root{
+  color-scheme: light;
+  --paper:#F8F4EE;
+  --card:#FFFFFF;
+  --ink:#2E2A27;
+  --muted:#6F665E;
+  --pistachio:#A66A2C;
+  --pistachio-deep:#3B2416;
+  --saffron:#E3B261;
+  --rose:#A66A2C;
+  --line:#E2DAD0;
+  --tint1:#F5EEE4; --tint2:#F0E6D8; --on-deep:#E8DAC6; --on-deep-line:#C9B8A4; --foot-line:#6B5A4B; --foot-text:#D6CBBE; --scrim:rgba(36,24,14,.55);
+  --font-display:'Reem Kufi','IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;
+  --font-body:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;
+  --radius:14px;
+}
+html[data-theme="navy"]{
+  --paper:#F4F6F9; --ink:#1F2A37; --muted:#5F6B7A; --pistachio:#0077C8; --pistachio-deep:#002F6C; --saffron:#FFC845; --rose:#0077C8; --line:#D5DBE3;
+  --tint1:#EEF3F9; --tint2:#E6EEF7; --on-deep:#D7E2F0; --on-deep-line:#8FA8C8; --foot-line:#4B5B73; --foot-text:#C7D0DC; --scrim:rgba(15,23,36,.55);
+}
+html[data-theme="berry"]{
+  --paper:#FBF6F3; --ink:#2F2428; --muted:#75656B; --pistachio:#A2476A; --pistachio-deep:#5A2238; --saffron:#F2C879; --rose:#A2476A; --line:#EADFDD;
+  --tint1:#F8EEF0; --tint2:#F3E3E7; --on-deep:#F0DCE2; --on-deep-line:#C9A3B0; --foot-line:#6E5560; --foot-text:#DCCDD2; --scrim:rgba(40,16,26,.55);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.6}
+h1,h2,h3{font-family:var(--font-body);font-weight:700;margin:0;text-wrap:balance;line-height:1.35}
+.hero h1{font-family:var(--font-display);line-height:1.3}
+p{margin:0}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--saffron);outline-offset:2px}
+.wrap{max-width:1040px;margin:0 auto;padding:0 16px}
+.notice{background:var(--ink);color:#fff;font-size:13px;padding:8px 0;text-align:center}
+.notice b{color:var(--saffron);font-weight:600}
+header.top{background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
+.top .wrap{display:flex;align-items:center;gap:12px;padding-top:10px;padding-bottom:10px}
+.logo-slot{flex:none;width:92px;height:44px;border:2px dashed var(--pistachio);border-radius:10px;display:grid;place-items:center;font-size:12px;font-weight:600;color:var(--pistachio-deep);background:var(--tint1)}
+.brand{font-family:var(--font-body);font-weight:700;font-size:17px;flex:1;min-width:0;white-space:nowrap}
+.city{display:flex;align-items:center;gap:6px;font-size:14px}
+@media (max-width:479px){.city span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}
+.city select{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--card)}
+.theme{flex:none;position:relative;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);display:grid;grid-template-columns:repeat(2,9px);gap:3px;place-content:center;padding:0}
+.theme i{width:9px;height:9px;border-radius:50%;display:block}
+.theme i:nth-child(1){background:#3B2416;grid-column:1/3;justify-self:center}
+.theme i:nth-child(2){background:#002F6C}
+.theme i:nth-child(3){background:#5A2238}
+.theme.glow{animation:glow 1.3s ease-in-out 8}
+@keyframes glow{0%,100%{box-shadow:0 0 0 0 transparent}50%{box-shadow:0 0 0 5px color-mix(in srgb,var(--saffron) 55%,transparent),0 0 16px 4px var(--saffron)}}
+.theme-name{position:absolute;top:50px;inset-inline-end:0;background:var(--ink);color:#fff;font-size:12.5px;font-weight:600;border-radius:8px;padding:3px 10px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .2s}
+.theme-name.show{opacity:1}
+@media (max-width:479px){.logo-slot{width:80px}.top .wrap{gap:8px}}
+.hero{background:var(--pistachio-deep);color:#fff}
+.hero .wrap{display:grid;grid-template-columns:1fr;gap:16px;padding-top:24px;padding-bottom:24px;align-items:center}
+.hero h1{font-size:30px}
+.hero p{color:var(--on-deep);max-width:46ch}
+.hero .cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.btn{border:0;border-radius:12px;padding:13px 20px;font-weight:600;font-size:16px;background:var(--saffron);color:var(--ink)}
+.btn.ghost{background:transparent;color:#fff;border:1.5px solid var(--on-deep-line)}
+.btn.dark{background:var(--pistachio-deep);color:#fff}
+.btn.line{background:var(--card);border:1.5px solid var(--line);color:var(--ink)}
+.btn.block{width:100%}
+.promise{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:14px;font-size:13px;color:var(--on-deep)}
+.promise span::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--saffron);margin-inline-end:6px}
+.hero-art{display:none}
+section{padding:26px 0}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}
+.sec-head h2{font-size:22px}
+.sec-head small{color:var(--muted);font-size:13px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:8px 16px;font-size:15px;font-weight:500}
+.chip[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column;text-align:start;padding:0}
+.card .art{aspect-ratio:4/3;display:block;width:100%}
+.card .body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:4px;flex:1}
+.card h3{font-family:var(--font-body);font-weight:600;font-size:15px;line-height:1.4}
+.card .meta{font-size:12.5px;color:var(--muted)}
+.card .price{margin-top:auto;display:flex;justify-content:space-between;align-items:center;font-variant-numeric:tabular-nums}
+.card .price b{font-size:15px}
+.card .add{font-size:13px;font-weight:600;color:var(--pistachio-deep);background:var(--tint2);border-radius:999px;padding:4px 12px}
+#ready{padding-bottom:0}
+.shelf{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+.shelf::-webkit-scrollbar{display:none}
+.rcard{flex:none;width:150px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
+.rcard .art{aspect-ratio:4/3;display:block;width:100%}
+.rcard .body{padding:8px 10px 10px;display:flex;flex-direction:column;gap:3px;flex:1}
+.rcard h3{font-family:var(--font-body);font-weight:600;font-size:14px;line-height:1.4}
+.rcard .meta{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rcard .quick{margin-top:auto;border:0;border-radius:999px;background:var(--pistachio-deep);color:#fff;font-size:13px;font-weight:600;padding:8px 10px;min-height:36px}
+.rcard .quick.ok{background:var(--tint2);color:var(--pistachio-deep)}
+.note{font-size:12.5px;color:var(--muted);margin-top:10px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+.assist{display:grid;gap:12px}
+.assist textarea{width:100%;min-height:84px;border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;resize:vertical;background:var(--paper)}
+.brief{border-inline-start:4px solid var(--rose);background:var(--tint1);border-radius:10px;padding:10px 12px;font-size:15px;display:none}
+.brief.show{display:block}
+.brief dl{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:6px 0 10px}
+.brief dt{color:var(--muted)}
+.brief dd{margin:0;font-weight:500}
+.branches{display:grid;grid-template-columns:1fr;gap:12px}
+.branch h3{font-family:var(--font-body);font-size:16px;font-weight:600}
+.branch p{font-size:14px;color:var(--muted)}
+.branch .open{display:inline-block;margin-top:6px;font-size:12.5px;font-weight:600;color:var(--pistachio-deep);background:var(--tint2);border-radius:999px;padding:2px 10px}
+footer{background:var(--ink);color:var(--foot-text);padding:22px 0 96px;font-size:14px}
+footer .cols{display:grid;gap:14px}
+footer b{color:#fff}
+.pay{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.pay span{border:1px solid var(--foot-line);border-radius:6px;padding:2px 8px;font-size:12.5px}
+.bar{position:fixed;inset-inline:0;bottom:0;z-index:30;background:var(--card);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:none}
+.bar.show{display:block}
+.bar .btn{display:flex;justify-content:space-between;align-items:center}
+.scrim{position:fixed;inset:0;background:var(--scrim);z-index:40;display:none;align-items:flex-end;justify-content:center}
+.scrim.show{display:flex}
+.sheet{background:var(--card);width:100%;max-width:520px;max-height:92%;overflow:auto;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.sheet h2{font-size:20px}
+.sheet .x{float:left;border:0;background:var(--paper);border-radius:999px;width:36px;height:36px;font-size:18px;line-height:1}
+.field{margin-top:14px}
+.field > label,.field > .lab{display:block;font-weight:600;font-size:14px;margin-bottom:6px}
+.opts{display:flex;flex-wrap:wrap;gap:8px}
+.opt{position:relative}
+.opt input{position:absolute;opacity:0;inset:0}
+.opt span{display:block;border:1.5px solid var(--line);border-radius:10px;padding:8px 12px;font-size:14.5px;background:var(--card)}
+.opt input:checked + span{border-color:var(--pistachio-deep);background:var(--tint2);font-weight:600}
+.opt input:focus-visible + span{outline:3px solid var(--saffron);outline-offset:2px}
+.field input[type=text],.field input[type=date],.field select{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--card)}
+.lines{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px}
+.lines li{display:flex;justify-content:space-between;gap:10px;font-size:15px;border-bottom:1px dashed var(--line);padding-bottom:8px}
+.lines small{display:block;color:var(--muted);font-size:12.5px}
+.lines button{border:0;background:none;color:var(--rose);font-size:13px;padding:0;text-decoration:underline}
+.total{display:flex;justify-content:space-between;font-weight:600;font-size:17px;margin-top:12px;font-variant-numeric:tabular-nums}
+.done{text-align:center}
+.done .tick{width:56px;height:56px;border-radius:50%;background:var(--tint2);color:var(--pistachio-deep);display:grid;place-items:center;font-size:28px;margin:4px auto 10px}
+.done .time{display:inline-block;background:var(--saffron);border-radius:999px;padding:4px 14px;font-weight:600;margin:8px 0}
+.msg{white-space:pre-wrap;text-align:start;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;margin-top:10px}
+@media (min-width:720px){
+  .hero .wrap{grid-template-columns:1.2fr .8fr;padding-top:40px;padding-bottom:40px}
+  .hero h1{font-size:40px}
+  .hero-art{display:block}
+  .grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .branches{grid-template-columns:repeat(3,1fr)}
+  footer .cols{grid-template-columns:repeat(3,1fr)}
+  .scrim{align-items:center}
+  .sheet{border-radius:18px}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.theme.glow{animation:none;box-shadow:0 0 0 3px var(--saffron)}}
+</style>
+</head>
+<body>
+
+<div class="notice"><div class="wrap">نموذج توضيحي بعلامة محايدة. <b>يُحذف عند الطلب أو يوم 15 ديسمبر 2026.</b> لا طلبات حقيقية ولا دفع.</div></div>
+
+<header class="top">
+  <div class="wrap">
+    <div class="logo-slot" aria-label="مكان الشعار">شعاركم هنا</div>
+    <div class="brand">اسم محلكم</div>
+    <label class="city" for="city"><span>المدينة</span>
+      <select id="city">
+        <option>الرياض</option>
+        <option>المدينة المنورة</option>
+        <option>الدمام</option>
+      </select>
+    </label>
+    <button type="button" class="theme" id="theme" aria-label="غيّر ألوان الصفحة"><i></i><i></i><i></i><span class="theme-name" id="theme-name" aria-live="polite"></span></button>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <div>
+      <h1>حلوى المناسبة، جاهزة في موعدها</h1>
+      <p>اختر المناسبة والموعد، واستلم من أقرب فرع أو نوصلها لك.</p>
+      <div class="cta">
+        <button class="btn" id="cta-order" type="button">اطلب الآن</button>
+        <button class="btn ghost" id="cta-reorder" type="button">أعد آخر طلب</button>
+      </div>
+      <div class="promise">
+        <span>توصيل في نفس اليوم للطلبات قبل 6 مساءً</span>
+        <span>استلام من الفرع خلال ساعتين</span>
+      </div>
+    </div>
+    <div class="hero-art" id="hero-art" aria-hidden="true"></div>
+  </div>
+</div>
+
+<main>
+  <section id="ready">
+    <div class="wrap">
+      <div class="sec-head"><h2>جاهز للطلب بضغطة</h2><small>بدون تصميم</small></div>
+      <div class="shelf" id="shelf"></div>
+    </div>
+  </section>
+
+  <section id="shop">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>ما المناسبة؟</h2>
+        <small id="count"></small>
+      </div>
+      <div class="chips" id="chips" role="group" aria-label="المناسبة"></div>
+      <div class="grid" id="grid"></div>
+      <p class="note">الأسعار والمنتجات والمواعيد في هذه الصفحة أمثلة للعرض، والرسوم مكان صور منتجاتكم.</p>
+    </div>
+  </section>
+
+  <section id="custom">
+    <div class="wrap">
+      <div class="sec-head"><h2>صف كيكتك ونجهز الطلب</h2></div>
+      <div class="panel assist">
+        <label for="desc">اكتب ما تريد بكلماتك</label>
+        <textarea id="desc">كيكة تخرج لـ 15 شخص، شوكولاتة، لونها أزرق ومكتوب عليها مبروك يا سارة</textarea>
+        <button class="btn dark" id="parse" type="button">حوّلها إلى طلب</button>
+        <div class="brief" id="brief" aria-live="polite"></div>
+        <p class="note">عرض توضيحي يعمل بقواعد بسيطة داخل الصفحة. المساعد الفعلي يُربط بعد التعاقد.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="branches">
+    <div class="wrap">
+      <div class="sec-head"><h2>الفروع وساعات العمل</h2><small>أمثلة للعرض</small></div>
+      <div class="branches">
+        <div class="panel branch"><h3>الرياض، حي الملقا</h3><p>يومياً من 7 صباحاً إلى 12 منتصف الليل</p><span class="open">استلام وتوصيل</span></div>
+        <div class="panel branch"><h3>المدينة المنورة، حي العزيزية</h3><p>يومياً من 6 صباحاً إلى 12 منتصف الليل</p><span class="open">استلام وتوصيل</span></div>
+        <div class="panel branch"><h3>الدمام، حي الشاطئ</h3><p>يومياً من 7 صباحاً إلى 11 مساءً</p><span class="open">استلام فقط</span></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap cols">
+    <div><b>رقم واحد لكل الطلبات</b><br>هنا يوضع رقم المحل الموحّد وزر واتساب.</div>
+    <div><b>طرق الدفع</b><div class="pay"><span>مدى</span><span>Apple Pay</span><span>تقسيط</span><span>عند الاستلام</span></div></div>
+    <div><b>نموذج توضيحي</b><br>صفحة تجريبية بعلامة محايدة، وليست موقعاً لأي محل قائم. تُحذف عند الطلب أو يوم 15 ديسمبر 2026. <a href="../index.html" style="color:#fff">من أعمال f3.sa</a></div>
+  </div>
+</footer>
+
+<div class="bar" id="bar"><button class="btn block" id="open-cart" type="button"><span>أكمل الطلب</span><span id="bar-sum"></span></button></div>
+
+<div class="scrim" id="scrim" role="dialog" aria-modal="true" aria-labelledby="sheet-title"><div class="sheet" id="sheet"></div></div>
+
+<script>
+(function(){
+  if(Date.now() >= Date.parse('2026-12-16T00:00:00+03:00')){
+    document.body.innerHTML='<div style="max-width:520px;margin:18vh auto;padding:0 20px;text-align:center;font-size:18px;line-height:1.8">انتهت مدة هذا النموذج التوضيحي.<br><a href="../index.html">العودة إلى f3.sa</a></div>';
+    return;
+  }
+  var OCC = [
+    ['all','الكل'],['birthday','عيد ميلاد'],['wedding','زواج'],['grad','تخرج'],
+    ['baby','مولود'],['guest','ضيافة'],['daily','جاهز يومياً']
+  ];
+  var P = [
+    {id:'pist', n:'كيكة الفستق والورد', k:'cake', c:['#A9C77B','#F3D9DE','#5C8739'], occ:['birthday','wedding'], cake:true, s:[['صغير، 8 أشخاص',145],['وسط، 14 شخصاً',210],['كبير، 20 شخصاً',290]]},
+    {id:'choc', n:'كيكة الشوكولاتة الداكنة', k:'cake', c:['#6B4332','#3B2318','#EBB22F'], occ:['birthday','grad'], cake:true, s:[['صغير، 8 أشخاص',135],['وسط، 14 شخصاً',195],['كبير، 20 شخصاً',270]]},
+    {id:'grad', n:'كيكة التخرج', k:'cake', c:['#F7F1E3','#27482A','#EBB22F'], occ:['grad'], cake:true, s:[['صغير، 8 أشخاص',160],['وسط، 14 شخصاً',230],['كبير، 20 شخصاً',310]]},
+    {id:'cup', n:'كب كيك مشكّل', k:'cup', c:['#F3D9DE','#B24C66','#A9C77B'], occ:['birthday','baby'], s:[['12 حبة',72],['24 حبة',138]]},
+    {id:'bak', n:'صينية بقلاوة مشكلة', k:'bak', c:['#E3B866','#C58F3B','#5C8739'], occ:['guest','wedding'], ready:true, s:[['نصف كيلو',85],['كيلو',160]]},
+    {id:'mam', n:'معمول التمر', k:'mam', c:['#EBD3A5','#C9A76B','#8A5A33'], occ:['guest'], ready:true, s:[['نصف كيلو',60],['كيلو',115]]},
+    {id:'baby', n:'علبة استقبال المولود', k:'box', c:['#CFE0EE','#F3D9DE','#FFFFFF'], occ:['baby'], s:[['24 قطعة',150],['48 قطعة',280]]},
+    {id:'bread', n:'سلة خبز الصباح', k:'bread', c:['#D9A45B','#B77B34','#F7F1E3'], occ:['daily'], ready:true, s:[['سلة صغيرة',28],['سلة كبيرة',49]]},
+    {id:'samb', n:'عجينة سمبوسة طازجة', k:'dough', c:['#F1E3C4','#D9B77A','#A66A2C'], occ:['daily'], ready:true, s:[['كيلو',20],['2 كيلو',38]]},
+    {id:'frz', n:'سمبوسة مفرزنة للقلي', k:'frz', c:['#E3B866','#C58F3B','#8A5A33'], occ:['daily'], ready:true, s:[['علبة 24 حبة',30],['علبتان',58]]}
+  ];
+  var BR = {'الرياض':'فرع الملقا','المدينة المنورة':'فرع العزيزية','الدمام':'فرع الشاطئ'};
+  var SLOTS = ['10 صباحاً إلى 12 ظهراً','12 ظهراً إلى 2 ظهراً','4 عصراً إلى 6 مساءً','6 مساءً إلى 8 مساءً','8 مساءً إلى 10 مساءً'];
+  var DFEE = 15; // sample flat delivery fee per zone
+  var st = {occ:'all', cart:[], t0:null, cur:null};
+  var $ = function(id){return document.getElementById(id)};
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function sar(n){return n+' ر.س'}
+  function clock(){ if(st.t0===null) st.t0=Date.now(); }
+
+  function art(k,c){
+    var bg='<rect width="120" height="90" fill="'+c[1]+'" opacity=".28"/><ellipse cx="60" cy="76" rx="44" ry="6" fill="#1D2921" opacity=".12"/>';
+    var s='';
+    if(k==='cake'){
+      s='<rect x="26" y="46" width="68" height="28" rx="5" fill="'+c[0]+'"/><rect x="36" y="26" width="48" height="22" rx="5" fill="'+c[1]+'"/>'
+       +'<rect x="26" y="46" width="68" height="7" rx="3.5" fill="'+c[2]+'"/><rect x="36" y="26" width="48" height="6" rx="3" fill="'+c[2]+'"/>'
+       +'<circle cx="60" cy="21" r="5" fill="'+c[2]+'"/>';
+    } else if(k==='cup'){
+      for(var i=0;i<3;i++){var x=28+i*32;
+        s+='<polygon points="'+(x-11)+',52 '+(x+11)+',52 '+(x+7)+',74 '+(x-7)+',74" fill="'+c[1]+'"/><circle cx="'+x+'" cy="46" r="12" fill="'+c[0]+'"/><circle cx="'+x+'" cy="34" r="4" fill="'+c[2]+'"/>';}
+    } else if(k==='bak'){
+      s='<rect x="18" y="24" width="84" height="50" rx="6" fill="#F7F1E3"/>';
+      for(var r=0;r<2;r++)for(var q=0;q<4;q++){var cx=31+q*19+(r?0:0),cy=38+r*22;
+        s+='<polygon points="'+cx+','+(cy-9)+' '+(cx+8)+','+cy+' '+cx+','+(cy+9)+' '+(cx-8)+','+cy+'" fill="'+(q%2?c[1]:c[0])+'"/><circle cx="'+cx+'" cy="'+cy+'" r="2.4" fill="'+c[2]+'"/>';}
+    } else if(k==='mam'){
+      for(var m=0;m<3;m++){var mx=30+m*30;
+        s+='<path d="M'+(mx-13)+' 70 A13 16 0 0 1 '+(mx+13)+' 70 Z" fill="'+c[0]+'"/><path d="M'+(mx-7)+' 68 A7 11 0 0 1 '+(mx+7)+' 68" fill="none" stroke="'+c[1]+'" stroke-width="2"/><circle cx="'+mx+'" cy="54" r="2" fill="'+c[2]+'"/>';}
+    } else if(k==='box'){
+      s='<rect x="20" y="28" width="80" height="46" rx="6" fill="'+c[2]+'" stroke="'+c[0]+'" stroke-width="3"/>';
+      for(var a=0;a<2;a++)for(var b=0;b<4;b++){s+='<circle cx="'+(33+b*18)+'" cy="'+(41+a*20)+'" r="6.5" fill="'+((a+b)%2?c[0]:c[1])+'"/>';}
+    } else if(k==='dough'){
+      for(var d=0;d<4;d++){ s+='<rect x="'+(22+d*4)+'" y="'+(30+d*10)+'" width="64" height="11" rx="3" fill="'+(d%2?c[1]:c[0])+'" stroke="'+c[2]+'" stroke-width="1"/>'; }
+    } else if(k==='frz'){
+      for(var f=0;f<3;f++){var fx=30+f*30;
+        s+='<polygon points="'+(fx-14)+',72 '+(fx+14)+',72 '+fx+',42" fill="'+(f%2?c[1]:c[0])+'"/><path d="M'+(fx-6)+' 63 L'+(fx+6)+' 63" stroke="'+c[2]+'" stroke-width="2" stroke-linecap="round"/>';}
+    } else {
+      s='<ellipse cx="60" cy="56" rx="38" ry="18" fill="'+c[0]+'"/><path d="M40 50 l8 10 M54 46 l8 12 M68 46 l8 12" stroke="'+c[2]+'" stroke-width="3" stroke-linecap="round"/><ellipse cx="60" cy="64" rx="34" ry="8" fill="'+c[1]+'" opacity=".45"/>';
+    }
+    return '<svg class="art" viewBox="0 0 120 90" role="img" aria-label="رسم توضيحي مكان صورة المنتج">'+bg+s+'</svg>';
+  }
+
+  function drawChips(){
+    $('chips').innerHTML = OCC.map(function(o){
+      return '<button type="button" class="chip" data-occ="'+o[0]+'" aria-pressed="'+(st.occ===o[0])+'">'+o[1]+'</button>';
+    }).join('');
+  }
+  function drawGrid(){
+    var list = P.filter(function(p){return st.occ==='all'||p.occ.indexOf(st.occ)>-1});
+    $('count').textContent = list.length+' منتجات';
+    $('grid').innerHTML = list.map(function(p){
+      return '<button type="button" class="card" data-id="'+p.id+'">'+art(p.k,p.c)
+        +'<span class="body"><h3>'+esc(p.n)+'</h3><span class="meta">'+esc(p.s[0][0])+'</span>'
+        +'<span class="price"><b>من '+sar(p.s[0][1])+'</b><span class="add">اطلب</span></span></span></button>';
+    }).join('');
+  }
+  var THEMES=[['caramel','كراميل'],['navy','كحلي'],['berry','توت']];
+  function setTheme(id){
+    if(id==='caramel') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme',id);
+    st.theme=id; try{ localStorage.setItem('demo_theme',id); }catch(e){}
+  }
+  function nextTheme(){
+    var i=0; THEMES.forEach(function(t,k){ if(t[0]===st.theme) i=k; });
+    var n=THEMES[(i+1)%THEMES.length]; setTheme(n[0]);
+    var b=$('theme'), l=$('theme-name'); b.classList.remove('glow');
+    l.textContent=n[1]; l.classList.add('show'); clearTimeout(st.tn); st.tn=setTimeout(function(){l.classList.remove('show')},1600);
+  }
+  function initTheme(){
+    var saved=null, seen=null;
+    try{ saved=localStorage.getItem('demo_theme'); seen=localStorage.getItem('demo_theme_seen'); localStorage.setItem('demo_theme_seen','1'); }catch(e){}
+    setTheme(THEMES.some(function(t){return t[0]===saved})?saved:'caramel');
+    if(!seen) $('theme').classList.add('glow');
+  }
+  function drawShelf(){
+    var order=['samb','frz','mam','bak','bread'];
+    $('shelf').innerHTML = order.map(function(id){
+      var p=P.filter(function(x){return x.id===id})[0];
+      return '<div class="rcard">'+art(p.k,p.c)+'<div class="body"><h3>'+esc(p.n)+'</h3><span class="meta">'+esc(p.s[0][0])+'، '+sar(p.s[0][1])+'</span>'
+        +'<button type="button" class="quick" data-quick="'+p.id+'">أضف للطلب</button></div></div>';
+    }).join('');
+  }
+  function sum(){return st.cart.reduce(function(t,i){return t+i.price},0)}
+  function drawBar(){
+    var n=st.cart.length;
+    $('bar').classList.toggle('show', n>0);
+    $('bar-sum').textContent = n+' في الطلب، '+sar(sum());
+  }
+  function open(html){ $('sheet').innerHTML=html; $('scrim').classList.add('show'); var h=$('sheet').querySelector('h2'); if(h){h.setAttribute('tabindex','-1'); h.focus();} }
+  function close(){ $('scrim').classList.remove('show'); }
+
+  function productSheet(p, preset){
+    st.cur=p;
+    var h='<button class="x" type="button" data-close aria-label="إغلاق">×</button><h2 id="sheet-title">'+esc(p.n)+'</h2>'
+      +'<div class="field"><span class="lab">الحجم</span><div class="opts">'
+      +p.s.map(function(s,i){var on = preset&&preset.size!=null ? preset.size===i : i===0;
+        return '<label class="opt"><input type="radio" name="size" value="'+i+'"'+(on?' checked':'')+'><span>'+esc(s[0])+'، '+sar(s[1])+'</span></label>';}).join('')
+      +'</div></div>';
+    if(p.cake){
+      h+='<div class="field"><label for="writing">عبارة على الكيكة (اختياري)</label><input type="text" id="writing" maxlength="40" value="'+esc(preset&&preset.writing||'')+'" placeholder="مثال: مبروك التخرج"></div>';
+    }
+    h+='<div class="field"><button class="btn block" type="button" id="add">أضف للطلب</button></div>';
+    open(h);
+  }
+  function addCurrent(){
+    var p=st.cur, i=+document.querySelector('input[name=size]:checked').value, w=$('writing');
+    st.cart.push({id:p.id,n:p.n,size:p.s[i][0],price:p.s[i][1],writing:w?w.value.trim():''});
+    drawBar(); close();
+  }
+  function tomorrow(){var d=new Date(Date.now()+864e5);return d.toISOString().slice(0,10)}
+  function cartSheet(){
+    var city=$('city').value;
+    var h='<button class="x" type="button" data-close aria-label="إغلاق">×</button><h2 id="sheet-title">طلبك</h2><ul class="lines">'
+      +st.cart.map(function(it,i){return '<li><span>'+esc(it.n)+'<small>'+esc(it.size)+(it.writing?'، العبارة: '+esc(it.writing):'')+'</small><button type="button" data-rm="'+i+'">حذف</button></span><b>'+sar(it.price)+'</b></li>'}).join('')
+      +'</ul><div class="total"><span>الإجمالي</span><span id="tot">'+sar(sum())+'</span></div>'
+      +'<div class="field"><span class="lab">الاستلام</span><div class="opts">'
+      +'<label class="opt"><input type="radio" name="mode" value="استلام من '+esc(BR[city])+'" checked><span>استلام من '+esc(BR[city])+'</span></label>'
+      +'<label class="opt"><input type="radio" name="mode" value="توصيل داخل '+esc(city)+'"><span>توصيل داخل '+esc(city)+'</span></label></div>'
+      +'<p class="note" id="dnote" hidden>التوصيل عبر شريك توصيل مرخّص. رسوم التوصيل (مثال): '+sar(DFEE)+'</p></div>'
+      +'<div class="field"><label for="day">اليوم</label><input type="date" id="day" value="'+tomorrow()+'" min="'+new Date().toISOString().slice(0,10)+'"></div>'
+      +'<div class="field"><label for="slot">الوقت</label><select id="slot">'+SLOTS.map(function(s,i){return '<option'+(i===2?' selected':'')+'>'+s+'</option>'}).join('')+'</select></div>'
+      +'<div class="field"><span class="lab">الدفع (للعرض فقط)</span><div class="opts">'
+      +['مدى','Apple Pay','تقسيط','عند الاستلام'].map(function(m,i){return '<label class="opt"><input type="radio" name="pay" value="'+m+'"'+(i===0?' checked':'')+'><span>'+m+'</span></label>'}).join('')
+      +'</div></div><div class="field"><button class="btn block" type="button" id="confirm">أكّد الطلب التجريبي</button></div>'
+      +'<p class="note">لا نطلب اسماً ولا رقماً ولا بطاقة في هذا النموذج.</p>';
+    open(h);
+  }
+  function confirmOrder(){
+    var secs = st.t0? Math.max(1,Math.round((Date.now()-st.t0)/1000)) : 0;
+    var mode=document.querySelector('input[name=mode]:checked').value, pay=document.querySelector('input[name=pay]:checked').value;
+    var day=$('day').value, slot=$('slot').value, fee=(mode.indexOf('توصيل')===0?DFEE:0), total=sum()+fee;
+    var msg='طلب جديد\n'+st.cart.map(function(it){return '• '+it.n+' ('+it.size+')'+(it.writing?' العبارة: '+it.writing:'')}).join('\n')
+      +'\n'+mode+(fee?'\nعبر شريك توصيل مرخّص، الرسوم: '+sar(fee):'')+'\nالموعد: '+day+'، '+slot+'\nالدفع: '+pay+'\nالإجمالي: '+sar(total);
+    try{ localStorage.setItem('demo_last', JSON.stringify(st.cart)); }catch(e){}
+    var h='<div class="done"><div class="tick">✓</div><h2 id="sheet-title">تم الطلب التجريبي</h2>'
+      +'<div class="time">أكملت الطلب في '+secs+' ثانية</div>'
+      +'<p>لم يُرسل شيء ولم يُخصم أي مبلغ. في المتجر الفعلي تصل هذه الرسالة للمحل وللزبون على واتساب.</p>'
+      +'<div class="msg" id="msg">'+esc(msg)+'</div>'
+      +'<p class="note">نقاط الولاء لهذا الطلب: '+Math.round(total/10)+' نقطة (مثال).</p>'
+      +'<div class="field"><button class="btn line block" type="button" id="copy">انسخ الملخص</button></div>'
+      +'<div class="field"><button class="btn block" type="button" data-close>رجوع للصفحة</button></div></div>';
+    st.cart=[]; st.t0=null; drawBar(); open(h);
+  }
+  function reorder(){
+    clock();
+    var last=null;
+    try{ last=JSON.parse(localStorage.getItem('demo_last')||'null'); }catch(e){}
+    if(!last||!last.length){ last=[{id:'pist',n:'كيكة الفستق والورد',size:'وسط، 14 شخصاً',price:210,writing:''}]; }
+    st.cart=last.slice(); drawBar(); cartSheet();
+  }
+  function parseDesc(){
+    clock();
+    var t=$('desc').value;
+    var ar='٠١٢٣٤٥٦٧٨٩'; t=t.replace(/[٠-٩]/g,function(d){return ar.indexOf(d)});
+    var n=(t.match(/(\d{1,3})\s*(شخص|أشخاص|اشخاص|نفر|ضيف)/)||t.match(/لـ?\s*(\d{1,3})/)||[])[1];
+    var flav=['شوكولاتة','فستق','فانيلا','ريد فلفت','ليمون','كراميل','توت'].filter(function(f){return t.indexOf(f)>-1})[0];
+    var occ=[['تخرج','grad'],['ميلاد','birthday'],['زواج','wedding'],['مولود','baby']].filter(function(o){return t.indexOf(o[0])>-1})[0];
+    var col=['أزرق','وردي','أبيض','أخضر','ذهبي','أحمر','بنفسجي'].filter(function(c){return t.indexOf(c)>-1})[0];
+    var w=(t.match(/(?:مكتوب عليها|العبارة|اكتبوا عليها|يكتب عليها)\s*[:،]?\s*(.+)$/)||[])[1];
+    var size = !n?1 : (+n<=8?0:(+n<=14?1:2));
+    var pid = flav==='فستق'?'pist' : (occ&&occ[1]==='grad'?'grad':(flav==='شوكولاتة'?'choc':'pist'));
+    var p=P.filter(function(x){return x.id===pid})[0];
+    st.brief={p:p,size:size,writing:(w||'').slice(0,40)};
+    $('brief').innerHTML='<b>فهمنا طلبك هكذا</b><dl>'
+      +'<dt>المناسبة</dt><dd>'+(occ?occ[0]:'لم تُذكر')+'</dd>'
+      +'<dt>العدد</dt><dd>'+(n?n+' شخصاً':'لم يُذكر')+'</dd>'
+      +'<dt>النكهة</dt><dd>'+(flav||'لم تُذكر')+'</dd>'
+      +'<dt>اللون</dt><dd>'+(col||'لم يُذكر')+'</dd>'
+      +'<dt>العبارة</dt><dd>'+(w?esc(w.slice(0,40)):'بدون')+'</dd>'
+      +'<dt>الأقرب عندنا</dt><dd>'+esc(p.n)+'، '+esc(p.s[size][0])+'، '+sar(p.s[size][1])+'</dd></dl>'
+      +'<button class="btn dark" type="button" id="brief-go">راجع الطلب وأضفه</button>';
+    $('brief').classList.add('show');
+  }
+
+  document.addEventListener('click',function(e){
+    var t=e.target.closest('button, [data-close]'); if(!t){ if(e.target.id==='scrim') close(); return; }
+    if(t.dataset.occ){ st.occ=t.dataset.occ; drawChips(); drawGrid(); return; }
+    if(t.dataset.quick){ clock(); var q=P.filter(function(p){return p.id===t.dataset.quick})[0];
+      st.cart.push({id:q.id,n:q.n,size:q.s[0][0],price:q.s[0][1],writing:''}); drawBar(); t.textContent='أُضيف ✓'; t.classList.add('ok'); return; }
+    if(t.dataset.id){ clock(); productSheet(P.filter(function(p){return p.id===t.dataset.id})[0]); return; }
+    if(t.hasAttribute('data-close')){ close(); return; }
+    if(t.dataset.rm!=null){ st.cart.splice(+t.dataset.rm,1); drawBar(); if(st.cart.length) cartSheet(); else close(); return; }
+    switch(t.id){
+      case 'cta-order': clock(); $('shop').scrollIntoView(); break;
+      case 'cta-reorder': reorder(); break;
+      case 'add': addCurrent(); break;
+      case 'open-cart': cartSheet(); break;
+      case 'theme': nextTheme(); break;
+      case 'confirm': confirmOrder(); break;
+      case 'parse': parseDesc(); break;
+      case 'brief-go': productSheet(st.brief.p,{size:st.brief.size,writing:st.brief.writing}); break;
+      case 'copy':
+        try{ navigator.clipboard.writeText($('msg').textContent).then(function(){t.textContent='تم النسخ'},function(){t.textContent='انسخ النص يدوياً من المربع'}); }
+        catch(err){ t.textContent='انسخ النص يدوياً من المربع'; }
+        break;
+    }
+  });
+  document.addEventListener('change',function(e){
+    if(e.target.name!=='mode') return;
+    var d=e.target.value.indexOf('توصيل')===0;
+    $('dnote').hidden=!d; $('tot').textContent=sar(sum()+(d?DFEE:0));
+  });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') close(); });
+
+  $('hero-art').innerHTML = art('cake',['#A9C77B','#F3D9DE','#EBB22F']);
+  initTheme(); drawShelf(); drawChips(); drawGrid(); drawBar();
+})();
+</script>
+</body>
+</html>
