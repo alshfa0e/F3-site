@@ -141,3 +141,9 @@ test('too many wrong tries from one place are blocked (429); other places are no
   const other = await call('GET', '/v1/items');
   assert.equal(other.status, 200, 'a different IP is not affected');
 });
+
+test('setup script is plain ASCII (Oracle console rejects other characters)', () => {
+  const t = fs.readFileSync(path.join(__dirname, '..', 'cloud-init.yaml'), 'utf8');
+  assert.ok(!/[^\x00-\x7F]/.test(t), 'non-ASCII character in cloud-init.yaml');
+  assert.equal((t.match(/PASTE_SERVER_CODE_HERE/g) || []).length, 1);
+});
