@@ -86,6 +86,9 @@ section{padding:26px 0}
 .chip[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column;text-align:start;padding:0}
+.ph{position:relative;display:block;aspect-ratio:4/3;overflow:hidden}
+.ph .art{display:block;width:100%;height:100%}
+.ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .card .art{aspect-ratio:4/3;display:block;width:100%}
 .card .body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:4px;flex:1}
 .card h3{font-family:var(--font-body);font-weight:600;font-size:15px;line-height:1.4}
@@ -213,7 +216,7 @@ footer b{color:#fff}
       </div>
       <div class="chips" id="chips" role="group" aria-label="المناسبة"></div>
       <div class="grid" id="grid"></div>
-      <p class="note">الأسعار والمنتجات والمواعيد في هذه الصفحة أمثلة للعرض، والرسوم مكان صور منتجاتكم.</p>
+      <p class="note">الأسعار والمنتجات والمواعيد في هذه الصفحة أمثلة للعرض. الصور من مكتبة صور مجانية <bdi dir="ltr">(Pexels)</bdi> للتوضيح، ومكانها صور منتجاتكم.</p>
     </div>
   </section>
 
@@ -265,16 +268,16 @@ footer b{color:#fff}
     ['baby','مولود'],['guest','ضيافة'],['daily','جاهز يومياً']
   ];
   var P = [
-    {id:'pist', n:'كيكة الفستق والورد', k:'cake', c:['#A9C77B','#F3D9DE','#5C8739'], occ:['birthday','wedding'], cake:true, s:[['صغير، 8 أشخاص',145],['وسط، 14 شخصاً',210],['كبير، 20 شخصاً',290]]},
-    {id:'choc', n:'كيكة الشوكولاتة الداكنة', k:'cake', c:['#6B4332','#3B2318','#EBB22F'], occ:['birthday','grad'], cake:true, s:[['صغير، 8 أشخاص',135],['وسط، 14 شخصاً',195],['كبير، 20 شخصاً',270]]},
-    {id:'grad', n:'كيكة التخرج', k:'cake', c:['#F7F1E3','#27482A','#EBB22F'], occ:['grad'], cake:true, s:[['صغير، 8 أشخاص',160],['وسط، 14 شخصاً',230],['كبير، 20 شخصاً',310]]},
-    {id:'cup', n:'كب كيك مشكّل', k:'cup', c:['#F3D9DE','#B24C66','#A9C77B'], occ:['birthday','baby'], s:[['12 حبة',72],['24 حبة',138]]},
-    {id:'bak', n:'صينية بقلاوة مشكلة', k:'bak', c:['#E3B866','#C58F3B','#5C8739'], occ:['guest','wedding'], ready:true, s:[['نصف كيلو',85],['كيلو',160]]},
-    {id:'mam', n:'معمول التمر', k:'mam', c:['#EBD3A5','#C9A76B','#8A5A33'], occ:['guest'], ready:true, s:[['نصف كيلو',60],['كيلو',115]]},
-    {id:'baby', n:'علبة استقبال المولود', k:'box', c:['#CFE0EE','#F3D9DE','#FFFFFF'], occ:['baby'], s:[['24 قطعة',150],['48 قطعة',280]]},
-    {id:'bread', n:'سلة خبز الصباح', k:'bread', c:['#D9A45B','#B77B34','#F7F1E3'], occ:['daily'], ready:true, s:[['سلة صغيرة',28],['سلة كبيرة',49]]},
-    {id:'samb', n:'عجينة سمبوسة طازجة', k:'dough', c:['#F1E3C4','#D9B77A','#A66A2C'], occ:['daily'], ready:true, s:[['كيلو',20],['2 كيلو',38]]},
-    {id:'frz', n:'سمبوسة مفرزنة للقلي', k:'frz', c:['#E3B866','#C58F3B','#8A5A33'], occ:['daily'], ready:true, s:[['علبة 24 حبة',30],['علبتان',58]]}
+    {id:'pist', ph:13715795, n:'كيكة الفستق', k:'cake', c:['#A9C77B','#F3D9DE','#5C8739'], occ:['birthday','wedding'], cake:true, s:[['صغير، 8 أشخاص',145],['وسط، 14 شخصاً',210],['كبير، 20 شخصاً',290]]},
+    {id:'choc', ph:8104140, n:'كيكة الشوكولاتة الداكنة', k:'cake', c:['#6B4332','#3B2318','#EBB22F'], occ:['birthday','grad'], cake:true, s:[['صغير، 8 أشخاص',135],['وسط، 14 شخصاً',195],['كبير، 20 شخصاً',270]]},
+    {id:'grad', ph:31243101, n:'كيكة المناسبات', k:'cake', c:['#F7F1E3','#27482A','#EBB22F'], occ:['grad'], cake:true, s:[['صغير، 8 أشخاص',160],['وسط، 14 شخصاً',230],['كبير، 20 شخصاً',310]]},
+    {id:'cup', ph:1546892, n:'كب كيك مشكّل', k:'cup', c:['#F3D9DE','#B24C66','#A9C77B'], occ:['birthday','baby'], s:[['12 حبة',72],['24 حبة',138]]},
+    {id:'bak', ph:5323489, n:'صينية بقلاوة مشكلة', k:'bak', c:['#E3B866','#C58F3B','#5C8739'], occ:['guest','wedding'], ready:true, s:[['نصف كيلو',85],['كيلو',160]]},
+    {id:'mam', ph:17255940, n:'معمول التمر', k:'mam', c:['#EBD3A5','#C9A76B','#8A5A33'], occ:['guest'], ready:true, s:[['نصف كيلو',60],['كيلو',115]]},
+    {id:'baby', ph:1346345, n:'علبة استقبال المولود', k:'box', c:['#CFE0EE','#F3D9DE','#FFFFFF'], occ:['baby'], s:[['24 قطعة',150],['48 قطعة',280]]},
+    {id:'bread', ph:1755788, n:'سلة خبز الصباح', k:'bread', c:['#D9A45B','#B77B34','#F7F1E3'], occ:['daily'], ready:true, s:[['سلة صغيرة',28],['سلة كبيرة',49]]},
+    {id:'samb', ph:30900708, n:'عجينة سمبوسة طازجة', k:'dough', c:['#F1E3C4','#D9B77A','#A66A2C'], occ:['daily'], ready:true, s:[['كيلو',20],['2 كيلو',38]]},
+    {id:'frz', ph:29037272, n:'سمبوسة مفرزنة للقلي', k:'frz', c:['#E3B866','#C58F3B','#8A5A33'], occ:['daily'], ready:true, s:[['علبة 24 حبة',30],['علبتان',58]]}
   ];
   var BR = {'الرياض':'فرع الملقا','المدينة المنورة':'فرع العزيزية','الدمام':'فرع الشاطئ'};
   var SLOTS = ['10 صباحاً إلى 12 ظهراً','12 ظهراً إلى 2 ظهراً','4 عصراً إلى 6 مساءً','6 مساءً إلى 8 مساءً','8 مساءً إلى 10 مساءً'];
@@ -316,6 +319,10 @@ footer b{color:#fff}
     return '<svg class="art" viewBox="0 0 120 90" role="img" aria-label="رسم توضيحي مكان صورة المنتج">'+bg+s+'</svg>';
   }
 
+  function pic(p){
+    var u='https://images.pexels.com/photos/'+p.ph+'/pexels-photo-'+p.ph+'.jpeg?auto=compress&cs=tinysrgb&w=480&h=360&fit=crop';
+    return '<span class="ph">'+art(p.k,p.c)+(p.ph?'<img loading="lazy" decoding="async" src="'+u+'" alt="'+esc(p.n)+'" onerror="this.remove()">':'')+'</span>';
+  }
   function drawChips(){
     $('chips').innerHTML = OCC.map(function(o){
       return '<button type="button" class="chip" data-occ="'+o[0]+'" aria-pressed="'+(st.occ===o[0])+'">'+o[1]+'</button>';
@@ -325,7 +332,7 @@ footer b{color:#fff}
     var list = P.filter(function(p){return st.occ==='all'||p.occ.indexOf(st.occ)>-1});
     $('count').textContent = list.length+' منتجات';
     $('grid').innerHTML = list.map(function(p){
-      return '<button type="button" class="card" data-id="'+p.id+'">'+art(p.k,p.c)
+      return '<button type="button" class="card" data-id="'+p.id+'">'+pic(p)
         +'<span class="body"><h3>'+esc(p.n)+'</h3><span class="meta">'+esc(p.s[0][0])+'</span>'
         +'<span class="price"><b>من '+sar(p.s[0][1])+'</b><span class="add">اطلب</span></span></span></button>';
     }).join('');
@@ -351,7 +358,7 @@ footer b{color:#fff}
     var order=['samb','frz','mam','bak','bread'];
     $('shelf').innerHTML = order.map(function(id){
       var p=P.filter(function(x){return x.id===id})[0];
-      return '<div class="rcard">'+art(p.k,p.c)+'<div class="body"><h3>'+esc(p.n)+'</h3><span class="meta">'+esc(p.s[0][0])+'، '+sar(p.s[0][1])+'</span>'
+      return '<div class="rcard">'+pic(p)+'<div class="body"><h3>'+esc(p.n)+'</h3><span class="meta">'+esc(p.s[0][0])+'، '+sar(p.s[0][1])+'</span>'
         +'<button type="button" class="quick" data-quick="'+p.id+'">أضف للطلب</button></div></div>';
     }).join('');
   }
@@ -420,7 +427,7 @@ footer b{color:#fff}
     clock();
     var last=null;
     try{ last=JSON.parse(localStorage.getItem('demo_last')||'null'); }catch(e){}
-    if(!last||!last.length){ last=[{id:'pist',n:'كيكة الفستق والورد',size:'وسط، 14 شخصاً',price:210,writing:''}]; }
+    if(!last||!last.length){ last=[{id:'pist',n:'كيكة الفستق',size:'وسط، 14 شخصاً',price:210,writing:''}]; }
     st.cart=last.slice(); drawBar(); cartSheet();
   }
   function parseDesc(){
