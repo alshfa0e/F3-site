@@ -1,0 +1,127 @@
+#cloud-config
+# f3 drop server — Oracle Cloud, Ubuntu 24.04, Always Free micro VM.
+# Paste this whole file into Oracle: Create instance > Advanced options > Management > Paste cloud-init script.
+# The page f3.sa/code fills in your server code for you ("Copy server setup script").
+# What it does: installs Node and Caddy (HTTPS for api.f3.sa), runs the drop server from
+# GitHub main, opens ports 80/443, keeps Ubuntu security updates on, and checks for
+# server updates every 15 minutes. No swap and no core dumps, so snippets stay in memory only.
+
+package_update: true
+package_upgrade: true
+packages:
+  - nodejs
+  - curl
+  - gnupg
+  - debian-keyring
+  - debian-archive-keyring
+  - apt-transport-https
+  - unattended-upgrades
+
+write_files:
+  - path: /etc/f3drop/server-code
+    permissions: '0600'
+    content: |
+      PASTE_SERVER_CODE_HERE
+  - path: /etc/f3drop/Caddyfile
+    permissions: '0644'
+    content: |
+      {
+        admin off
+      }
+      api.f3.sa {
+        reverse_proxy 127.0.0.1:8787
+        header -Server
+      }
+  - path: /etc/systemd/system/f3drop.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=f3 drop (memory-only encrypted snippets)
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      User=f3drop
+      Group=f3drop
+      Environment=PORT=8787
+      Environment=HOST=127.0.0.1
+      Environment=AUTH_FILE=/var/lib/f3drop/auth
+      Environment=ALLOW_ORIGIN=https://f3.sa
+      ExecStart=/usr/bin/node /opt/f3drop/server.js
+      Restart=always
+      RestartSec=2
+      LimitCORE=0
+      NoNewPrivileges=true
+      ProtectSystem=strict
+      ProtectHome=true
+      PrivateTmp=true
+      ReadWritePaths=/var/lib/f3drop
+      MemoryMax=300M
+      StandardOutput=null
+
+      [Install]
+      WantedBy=multi-user.target
+  - path: /usr/local/bin/f3drop-update
+    permissions: '0755'
+    content: |
+      #!/bin/sh
+      # Fetch the latest server code from GitHub main. Restart only if it changed and passes a syntax check.
+      set -e
+      URL=https://raw.githubusercontent.com/alshfa0e/F3-site/main/drop-server/server.js
+      TMP=$(mktemp)
+      trap 'rm -f "$TMP"' EXIT
+      curl -fsSL --max-time 30 "$URL" -o "$TMP"
+      /usr/bin/node --check "$TMP"
+      if ! cmp -s "$TMP" /opt/f3drop/server.js; then
+        install -m 0644 "$TMP" /opt/f3drop/server.js
+        systemctl restart f3drop
+      fi
+  - path: /etc/systemd/system/f3drop-update.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Update f3 drop server code
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/f3drop-update
+  - path: /etc/systemd/system/f3drop-update.timer
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Check for f3 drop updates every 15 minutes
+
+      [Timer]
+      OnBootSec=2min
+      OnUnitActiveSec=15min
+
+      [Install]
+      WantedBy=timers.target
+  - path: /etc/apt/apt.conf.d/21f3drop-auto-upgrades
+    permissions: '0644'
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+  - path: /etc/apt/apt.conf.d/52f3drop-reboot
+    permissions: '0644'
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "03:30";
+  - path: /etc/sysctl.d/90-f3drop.conf
+    permissions: '0644'
+    content: |
+      kernel.core_pattern=|/bin/false
+      fs.suid_dumpable=0
+
+runcmd:
+  - [sh, -c, 'swapoff -a || true']
+  - [sh, -c, 'sysctl --system >/dev/null || true']
+  - [sh, -c, 'curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg']
+  - [sh, -c, 'curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt > /etc/apt/sources.list.d/caddy-stable.list']
+  - [sh, -c, 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y caddy']
+  - [sh, -c, 'install -m 0644 /etc/f3drop/Caddyfile /etc/caddy/Caddyfile']
+  - [sh, -c, 'id f3drop >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin f3drop']
+  - [sh, -c, 'mkdir -p /opt/f3drop /var/lib/f3drop && tr -d " \n\r\t" < /etc/f3drop/server-code > /var/lib/f3drop/auth && chown -R f3drop:f3drop /var/lib/f3drop && chmod 700 /var/lib/f3drop && chmod 600 /var/lib/f3drop/auth']
+  - [sh, -c, 'curl -fsSL --retry 5 https://raw.githubusercontent.com/alshfa0e/F3-site/main/drop-server/server.js -o /opt/f3drop/server.js']
+  - [sh, -c, 'iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT && iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT && (netfilter-persistent save || true)']
+  - [sh, -c, 'systemctl daemon-reload && systemctl enable --now f3drop f3drop-update.timer && systemctl restart caddy']
