@@ -1,0 +1,27 @@
+name: drop-tests
+
+on:
+  pull_request:
+    paths: ['code/**', 'drop-server/**', '.github/workflows/drop-tests.yml']
+  push:
+    branches: [main]
+    paths: ['code/**', 'drop-server/**', '.github/workflows/drop-tests.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['18', '22']   # 18 = what the Oracle server runs; 22 = current
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Server and crypto tests
+        run: node --test drop-server/test/server.test.js drop-server/test/crypto.test.mjs
+      - name: Server code syntax
+        run: node --check drop-server/server.js

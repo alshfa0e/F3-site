@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.f3.sa; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="f3-api" content="https://api.f3.sa">
+<title>Drop</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="app.css">
+<script src="prism.js" data-manual></script>
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<main class="wrap">
+  <header class="bar">
+    <h1>Drop</h1>
+    <span id="status" class="status" aria-live="polite"></span>
+  </header>
+
+  <section id="start" hidden>
+    <p id="startMsg">Open your private link to see your inbox.</p>
+    <label for="linkIn">Your private link or key</label>
+    <input id="linkIn" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX">
+    <button id="openBtn" class="btn" type="button">Open</button>
+    <details class="first">
+      <summary>First time? Create your link</summary>
+      <p class="muted">This makes a new private link on this device. Nothing is sent anywhere.</p>
+      <button id="createBtn" class="btn line" type="button">Create my link</button>
+    </details>
+  </section>
+
+  <section id="setup" hidden>
+    <h2 id="setupTitle">Your private link</h2>
+    <p class="warn">Anyone with this link can use your inbox. Save it as a bookmark on each device. Do not send it in chats or email.</p>
+    <code id="newLink" class="box"></code>
+    <button id="copyLink" class="btn line" type="button">Copy link</button>
+    <h3>Server code</h3>
+    <p class="muted">Used only in the Oracle setup step. It cannot open anything.</p>
+    <code id="newCode" class="box small"></code>
+    <button id="copySetup" class="btn line" type="button">Copy server setup script</button>
+    <button id="goNew" class="btn" type="button">Open my inbox</button>
+  </section>
+
+  <section id="inbox" hidden>
+    <div class="compose">
+      <textarea id="paste" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" placeholder="Paste code here" aria-label="Code to send"></textarea>
+      <div class="row">
+        <select id="lang" aria-label="Language">
+          <option value="plain">Plain</option>
+          <option value="python">Python</option>
+          <option value="javascript">JavaScript</option>
+          <option value="typescript">TypeScript</option>
+          <option value="sql">SQL</option>
+          <option value="bash">Bash</option>
+          <option value="powershell">PowerShell</option>
+          <option value="json">JSON</option>
+          <option value="yaml">YAML</option>
+          <option value="markup">HTML / XML</option>
+          <option value="css">CSS</option>
+          <option value="csharp">C#</option>
+          <option value="java">Java</option>
+        </select>
+        <span id="size" class="muted"></span>
+        <button id="sendBtn" class="btn" type="button">Send</button>
+      </div>
+      <p class="hint muted">Copy deletes it on both devices. Anything not copied is gone after 5 minutes.</p>
+    </div>
+    <p id="empty" class="muted">Nothing here.</p>
+    <ul id="list" class="list"></ul>
+    <details class="settings">
+      <summary>Settings</summary>
+      <button id="wipeBtn" class="btn line" type="button">Delete everything now</button>
+      <button id="rotateBtn" class="btn line danger" type="button">Make a new link (old one stops working)</button>
+      <button id="setupAgain" class="btn line" type="button">Copy server setup script (for a rebuild)</button>
+    </details>
+  </section>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</main>
+</body>
+</html>
