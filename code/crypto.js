@@ -1,38 +1,19 @@
-// f3 drop: all secret work happens here, in the browser.
-// The private link carries a 125-bit key after "#". The part after "#" is never
-// sent to any server. From it we derive two separate things:
-//   1. an AES-256-GCM key that locks and unlocks snippets (never leaves the device)
-//   2. an access token the server checks (the server stores only its SHA-256)
+// f3 drop v2: all secret work happens here, in the browser.
+//
+// Each room has a random 256-bit key made on the first device. It never reaches the server
+// in readable form. To bring the second device in, the first device makes a 4-character
+// code and runs it through a slow PBKDF2 step (300,000 rounds), which gives two things:
+//   1. a lookup tag the server uses to find the room (it stores only a hash of it)
+//   2. a key that locks a copy of the room key for the joiner
+// The code works once, for 10 minutes. Snippets are locked with AES-256-GCM and tied to
+// their room, so a snippet from one room will not open in another.
 
-const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford base32: no I, L, O, U
-const KEY_CHARS = 25; // 25 x 5 bits = 125 bits
-const SALT = 'f3drop-v1';
-const AAD = 'f3drop-v1';
+export const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford base32: no I, L, O, U
+export const CODE_CHARS = 4;
+const JOIN_SALT = 'f3drop-join-v2';
+const JOIN_ROUNDS = 300000;
 const te = new TextEncoder();
 const td = new TextDecoder();
-
-export function newSecret() {
-  const bytes = crypto.getRandomValues(new Uint8Array(KEY_CHARS));
-  let s = '';
-  for (const b of bytes) s += ALPHABET[b & 31]; // 256 is a multiple of 32, so this is uniform
-  return group(s);
-}
-
-function group(s) {
-  return s.match(/.{5}/g).join('-');
-}
-
-// Accepts a full link or just the key; returns the key in groups, or null.
-export function normalizeSecret(input) {
-  if (typeof input !== 'string') return null;
-  let s = input.trim();
-  const hash = s.indexOf('#');
-  if (hash >= 0) s = s.slice(hash + 1);
-  s = s.toUpperCase().replace(/[IL]/g, '1').replace(/O/g, '0').replace(/[^0-9A-Z]/g, '');
-  if (s.length !== KEY_CHARS) return null;
-  for (const c of s) if (!ALPHABET.includes(c)) return null;
-  return group(s);
-}
 
 export function b64url(bytes) {
   let bin = '';
@@ -50,41 +31,86 @@ export function unb64url(s) {
   return out;
 }
 
-function hex(buf) {
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+export async function sha256hex(s) {
+  const d = await crypto.subtle.digest('SHA-256', te.encode(s));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function deriveKeys(secret) {
-  const norm = normalizeSecret(secret);
-  if (!norm) throw new Error('bad_secret');
-  const raw = te.encode(norm.replace(/-/g, ''));
-  const base = await crypto.subtle.importKey('raw', raw, 'HKDF', false, ['deriveKey', 'deriveBits']);
-  const salt = te.encode(SALT);
-  const aesKey = await crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt, info: te.encode('enc') },
-    base,
-    { name: 'AES-GCM', length: 256 },
-    false, // not extractable
-    ['encrypt', 'decrypt']
-  );
-  const authBits = await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info: te.encode('auth') }, base, 256);
-  const token = b64url(new Uint8Array(authBits));
-  const serverCode = hex(await crypto.subtle.digest('SHA-256', te.encode(token)));
-  return { secret: norm, aesKey, token, serverCode };
+export function randomToken() {
+  return b64url(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-export async function seal(aesKey, obj) {
+// A fresh 4-character code. 256 is a multiple of 32, so each character is uniform.
+export function newCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(CODE_CHARS));
+  let s = '';
+  for (const b of bytes) s += ALPHABET[b & 31];
+  return s;
+}
+
+// Accepts what a person types (any case, spaces, I/L for 1, O for 0) or a link ending in #CODE.
+export function normalizeCode(input) {
+  if (typeof input !== 'string') return null;
+  let s = input.trim();
+  const hash = s.lastIndexOf('#');
+  if (hash >= 0) s = s.slice(hash + 1);
+  s = s.toUpperCase().replace(/[IL]/g, '1').replace(/O/g, '0').replace(/[\s-]/g, '');
+  if (s.length !== CODE_CHARS) return null;
+  for (const c of s) if (!ALPHABET.includes(c)) return null;
+  return s;
+}
+
+// Room key: raw bytes (kept on this device for the day) plus a usable, non-extractable key.
+export function newRoomKeyRaw() {
+  return crypto.getRandomValues(new Uint8Array(32));
+}
+
+export function importRoomKey(raw) {
+  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
+async function codeKeys(code) {
+  const norm = normalizeCode(code);
+  if (!norm) throw new Error('bad_code');
+  const base = await crypto.subtle.importKey('raw', te.encode(norm), 'PBKDF2', false, ['deriveBits']);
+  const bits = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: te.encode(JOIN_SALT), iterations: JOIN_ROUNDS }, base, 512));
+  const tag = b64url(bits.slice(0, 32));
+  const wrapKey = await crypto.subtle.importKey('raw', bits.slice(32), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  return { tag, wrapKey };
+}
+
+// First device: lock a copy of the room key under the code.
+export async function wrapForCode(code, rawKey) {
+  const { tag, wrapKey } = await codeKeys(code);
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: te.encode(AAD) }, aesKey, te.encode(JSON.stringify(obj)));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: te.encode(JOIN_SALT) }, wrapKey, rawKey);
+  return { tag, iv: b64url(iv), wrapped: b64url(new Uint8Array(ct)) };
+}
+
+// Second device: the tag to send when joining.
+export async function joinTag(code) {
+  return (await codeKeys(code)).tag;
+}
+
+// Second device: unlock the room key the server handed back.
+export async function unwrapWithCode(code, box) {
+  const { wrapKey } = await codeKeys(code);
+  const raw = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: unb64url(box.iv), additionalData: te.encode(JOIN_SALT) }, wrapKey, unb64url(box.wrapped));
+  return new Uint8Array(raw);
+}
+
+const aad = (roomId) => te.encode('f3drop-v2:' + roomId);
+
+export async function seal(key, roomId, obj) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad(roomId) }, key, te.encode(JSON.stringify(obj)));
   return { iv: b64url(iv), ct: b64url(new Uint8Array(ct)) };
 }
 
-export async function open(aesKey, item) {
-  const pt = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: unb64url(item.iv), additionalData: te.encode(AAD) },
-    aesKey,
-    unb64url(item.ct)
-  );
+export async function open(key, roomId, item) {
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64url(item.iv), additionalData: aad(roomId) }, key, unb64url(item.ct));
   return JSON.parse(td.decode(pt));
 }
 
