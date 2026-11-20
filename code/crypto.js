@@ -1,4 +1,4 @@
-// f3 drop v2: all secret work happens here, in the browser.
+// f3 drop: all secret work happens here, in the browser.
 //
 // Each room has a random 256-bit key made on the first device. It never reaches the server
 // in readable form. To bring the second device in, the first device makes a 4-character
@@ -102,6 +102,79 @@ export async function unwrapWithCode(code, box) {
 }
 
 const aad = (roomId) => te.encode('f3drop-v2:' + roomId);
+
+// ---------- packing (v3): text or a file, packed smaller when that helps ----------
+// Plain bytes before locking: [flag][4-byte meta length][meta JSON][body].
+// flag 0 = as is, 1 = everything after the flag is gzip. Older v2 items are plain JSON ("{...").
+export const MAX_UNPACKED = 64 * 1024 * 1024; // refuse to unpack more than this (protects the device)
+export const canPack = typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
+
+async function readAll(stream, limit) {
+  const reader = stream.getReader();
+  const chunks = [];
+  let n = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    n += value.length;
+    if (limit && n > limit) { try { await reader.cancel(); } catch (_) { /* ignore */ } throw new Error('too_big'); }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(n);
+  let o = 0;
+  for (const c of chunks) { out.set(c, o); o += c.length; }
+  return out;
+}
+
+const gzip = (bytes) => readAll(new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip')));
+const gunzip = (bytes, limit) => readAll(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')), limit);
+
+export async function pack(meta, body) {
+  const m = te.encode(JSON.stringify(meta));
+  const inner = new Uint8Array(4 + m.length + body.length);
+  new DataView(inner.buffer).setUint32(0, m.length);
+  inner.set(m, 4);
+  inner.set(body, 4 + m.length);
+  let flag = 0;
+  let payload = inner;
+  if (canPack) {
+    const z = await gzip(inner);
+    if (z.length < inner.length * 0.95) { flag = 1; payload = z; } // skip when it does not help (photos, PDFs, zips)
+  }
+  const out = new Uint8Array(1 + payload.length);
+  out[0] = flag;
+  out.set(payload, 1);
+  return out;
+}
+
+export async function unpack(plain) {
+  if (plain[0] === 0x7b) { // v2: JSON text item
+    const o = JSON.parse(td.decode(plain));
+    return { meta: { v: 2, kind: 'text', lang: o.lang }, text: String(o.text) };
+  }
+  let inner;
+  if (plain[0] === 1) inner = await gunzip(plain.subarray(1), MAX_UNPACKED);
+  else if (plain[0] === 0) inner = plain.subarray(1);
+  else throw new Error('bad_format');
+  if (inner.length < 4) throw new Error('bad_format');
+  const len = new DataView(inner.buffer, inner.byteOffset, inner.byteLength).getUint32(0);
+  if (len > inner.length - 4) throw new Error('bad_format');
+  const meta = JSON.parse(td.decode(inner.subarray(4, 4 + len)));
+  const body = inner.subarray(4 + len);
+  if (meta.kind === 'file') return { meta, bytes: body };
+  return { meta, text: td.decode(body) };
+}
+
+export async function sealBytes(key, roomId, bytes) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad(roomId) }, key, bytes);
+  return { iv: b64url(iv), ct: b64url(new Uint8Array(ct)) };
+}
+
+export async function openBytes(key, roomId, item) {
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64url(item.iv), additionalData: aad(roomId) }, key, unb64url(item.ct));
+  return new Uint8Array(pt);
+}
 
 export async function seal(key, roomId, obj) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
