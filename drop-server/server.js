@@ -105,6 +105,15 @@ function readStatsHash() {
 }
 let statsHash = readStatsHash();
 
+// Last result of the auto-updater (written by /usr/local/bin/f3drop-update), shown on /health.
+function updateStatus() {
+  try {
+    const [at, result] = fs.readFileSync(path.join(CFG.dataDir, 'update-status'), 'utf8').trim().split(/\s+/);
+    if (/^\d{4}-\d\d-\d\dT[\d:]+Z$/.test(at) && /^[a-z-]{1,20}$/.test(result)) return { at, result };
+  } catch (_) { /* no updater run yet */ }
+  return null;
+}
+
 // ---------- rooms ----------
 function dropItem(room, id, why) {
   const it = room.items.get(id);
@@ -259,7 +268,7 @@ async function handle(req, res) {
   const origin = req.headers.origin;
   if (origin && origin !== CFG.allowOrigin) return send(res, 403, { error: 'origin' });
   if (req.method === 'OPTIONS') return send(res, 204);
-  if (req.method === 'GET' && p === '/health') return send(res, 200, { ok: true, v: 2, stats: !!statsHash });
+  if (req.method === 'GET' && p === '/health') return send(res, 200, { ok: true, v: 2, stats: !!statsHash, update: updateStatus() });
   if (!p.startsWith('/v1/')) return send(res, 404, { error: 'not_found' });
 
   const ip = clientIp(req);

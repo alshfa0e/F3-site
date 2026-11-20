@@ -61,7 +61,8 @@ os.mkdir(data)
 shutil.copytree(REPO, site, ignore=shutil.ignore_patterns(".git"))
 idx = os.path.join(site, "code", "index.html")
 html = open(idx, encoding="utf-8").read()
-html = html.replace('content="https://api.f3.sa"', f'content="{API}"').replace("connect-src 'self' https://api.f3.sa", f"connect-src 'self' {API}")
+html = html.replace('content="https://api2.f3.sa"', f'content="{API}"').replace("connect-src 'self' https://api2.f3.sa", f"connect-src 'self' {API}")
+assert API in html, "test could not point the page at the local server"
 open(idx, "w", encoding="utf-8").write(html)
 
 env = dict(os.environ, PORT=str(API_PORT), DATA_DIR=data, ALLOW_ORIGIN=SITE, ITEM_TTL_MS=str(ITEM_TTL_MS), SWEEP_MS="200", STATS_SAVE_MS="500")
