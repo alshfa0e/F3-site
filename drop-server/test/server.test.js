@@ -294,6 +294,27 @@ test('server 2: visits per network per day are capped', async () => {
   assert.equal(r.json.days[0].visits, 2);
 });
 
+test('health shows the last auto-update result', async () => {
+  const s = await start({});
+  const c = client(s);
+  assert.equal((await c('GET', '/health')).json.update, null, 'nothing before the first run');
+  fs.writeFileSync(path.join(s.dir, 'update-status'), '2026-11-20T00:00:00Z up-to-date\n');
+  assert.deepEqual((await c('GET', '/health')).json.update, { at: '2026-11-20T00:00:00Z', result: 'up-to-date' });
+  fs.writeFileSync(path.join(s.dir, 'update-status'), '<script>alert(1)</script>');
+  assert.equal((await c('GET', '/health')).json.update, null, 'junk is not echoed');
+  await stop(s);
+});
+
+test('updater: temp file ends in .js (node --check refuses other endings), timer starts right away', () => {
+  const t = fs.readFileSync(path.join(__dirname, '..', 'cloud-init.yaml'), 'utf8');
+  assert.ok(t.includes('TMP=$(mktemp --suffix=.js)'));
+  assert.ok(!/TMP=\$\(mktemp\)/.test(t), 'old temp file name is gone');
+  assert.ok(t.includes('OnActiveSec=1min'));
+  assert.ok(t.includes('api2.f3.sa {'));
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'code', 'index.html'), 'utf8');
+  assert.ok(html.includes('content="https://api2.f3.sa"') && html.includes("connect-src 'self' https://api2.f3.sa"), 'page points at api2');
+});
+
 test('setup script is plain ASCII (Oracle console rejects other characters)', () => {
   const t = fs.readFileSync(path.join(__dirname, '..', 'cloud-init.yaml'), 'utf8');
   assert.ok(!/[^\x00-\x7F]/.test(t), 'non-ASCII character in cloud-init.yaml');

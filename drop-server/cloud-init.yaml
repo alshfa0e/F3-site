@@ -2,7 +2,7 @@
 # f3 drop server - Oracle Cloud, Ubuntu 24.04, Always Free micro VM.
 # Paste this whole file into Oracle: Create instance > Advanced options > Management > Paste cloud-init script.
 # Paste it exactly as it is. Nothing needs filling in.
-# What it does: installs Node and Caddy (HTTPS for api.f3.sa), runs the drop server from
+# What it does: installs Node and Caddy (HTTPS for api2.f3.sa), runs the drop server from
 # GitHub main, opens ports 80/443, keeps Ubuntu security updates on, and checks for
 # server updates every 15 minutes. No swap and no core dumps, so snippets stay in memory only.
 # The only files the server writes: /var/lib/f3drop/stats.json (counts) and stats-auth (a hash).
@@ -25,7 +25,7 @@ write_files:
       {
         admin off
       }
-      api.f3.sa {
+      api2.f3.sa {
         reverse_proxy 127.0.0.1:8787
         header -Server
       }
@@ -63,21 +63,28 @@ write_files:
     content: |
       #!/bin/sh
       # Fetch the latest server code from GitHub main. Restart only if it changed and passes a syntax check.
-      set -e
+      # The result goes to /var/lib/f3drop/update-status, which https://api2.f3.sa/health shows.
       URL=https://raw.githubusercontent.com/alshfa0e/F3-site/main/drop-server/server.js
-      TMP=$(mktemp)
+      STATUS=/var/lib/f3drop/update-status
+      # The name must end in .js: node --check refuses other file endings.
+      TMP=$(mktemp --suffix=.js)
       trap 'rm -f "$TMP"' EXIT
-      curl -fsSL --max-time 30 "$URL" -o "$TMP"
-      /usr/bin/node --check "$TMP"
-      if ! cmp -s "$TMP" /opt/f3drop/server.js; then
-        install -m 0644 "$TMP" /opt/f3drop/server.js
-        systemctl restart f3drop
-      fi
+      say() {
+        printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" > "$STATUS.tmp" && chmod 0644 "$STATUS.tmp" && mv "$STATUS.tmp" "$STATUS"
+      }
+      if ! curl -fsSL --max-time 30 "$URL" -o "$TMP"; then say fetch-failed; exit 1; fi
+      if ! /usr/bin/node --check "$TMP"; then say check-failed; exit 1; fi
+      if cmp -s "$TMP" /opt/f3drop/server.js; then say up-to-date; exit 0; fi
+      install -m 0644 "$TMP" /opt/f3drop/server.js
+      systemctl restart f3drop
+      say updated
   - path: /etc/systemd/system/f3drop-update.service
     permissions: '0644'
     content: |
       [Unit]
       Description=Update f3 drop server code
+      After=network-online.target
+      Wants=network-online.target
 
       [Service]
       Type=oneshot
@@ -89,6 +96,7 @@ write_files:
       Description=Check for f3 drop updates every 15 minutes
 
       [Timer]
+      OnActiveSec=1min
       OnBootSec=2min
       OnUnitActiveSec=15min
 

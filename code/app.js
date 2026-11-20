@@ -9,7 +9,7 @@ if (window.top !== window.self) {
   throw new Error('framed');
 }
 
-const API = (document.querySelector('meta[name="f3-api"]') || {}).content || 'https://api.f3.sa';
+const API = (document.querySelector('meta[name="f3-api"]') || {}).content || 'https://api2.f3.sa';
 const MAX_BYTES = 256 * 1024;
 const HIGHLIGHT_MAX = 60 * 1024;
 const POLL_MS = 1500;

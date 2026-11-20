@@ -26,16 +26,16 @@ Rules:
 - 30 items and 4 MB per room. 256 KB per item.
 
 ## Server
-- Already running on Oracle (Riyadh) at `api.f3.sa`. It updates itself from GitHub `main` within 15 minutes of a merged pull request.
-- `https://api.f3.sa/health` shows `{"ok":true,"v":2,...}` once the new version is running.
+- Already running on Oracle (Riyadh) at `api2.f3.sa`. It updates itself from GitHub `main` within 15 minutes of a merged pull request.
+- `https://api2.f3.sa/health` shows `{"ok":true,"v":2,...}` and `update`: the time and result of the last update check (`updated`, `up-to-date`, `fetch-failed` or `check-failed`). It should never be more than about 15 minutes old.
 - On disk it keeps only `stats.json` (counts) and `stats-auth` (a hash of the stats link). Rooms and code live in memory only.
 - Restarts (updates, or 03:30 after security updates) end all rooms. Open the page again for a new code.
 
 ## Rebuild from scratch (only if the server is lost)
 1. Oracle → **Compute** → **Instances** → **Create instance**, name `drop`, image Canonical Ubuntu 24.04, shape `VM.Standard.A1.Flex` 1 OCPU, network `drop-vcn` public subnet with a public IPv4 address, **No SSH keys**.
 2. **Advanced options → Management → Paste cloud-init script:** paste `drop-server/cloud-init.yaml` exactly as it is.
-3. When it is *Running*, put the new public IP in the DNet **A** record for `api`.
-4. Wait about 10 minutes and check `https://api.f3.sa/health`. Then claim stats again (step above).
+3. When it is *Running*, put the new public IP in the DNet **A** record for `api2`.
+4. Wait about 10 minutes and check `https://api2.f3.sa/health`. Then claim stats again (step above).
 
 ## Good to know
 - **Clipboard:** after pasting, copy any harmless word so the code does not stay in your clipboard.
