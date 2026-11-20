@@ -1,7 +1,8 @@
-// f3 drop v2: daily rooms. Open on one device, type its 4-character code on the other.
+// f3 drop: daily rooms. Open on one device, type its 4-character code on the other.
+// Text, big pastes and files up to 10 MB each (after packing).
 import {
   newCode, normalizeCode, newRoomKeyRaw, importRoomKey, wrapForCode, joinTag, unwrapWithCode,
-  seal, open, byteLength, b64url, unb64url, sha256hex, randomToken,
+  byteLength, b64url, unb64url, sha256hex, randomToken, pack, unpack, sealBytes, openBytes,
 } from './crypto.js';
 
 if (window.top !== window.self) {
@@ -10,7 +11,11 @@ if (window.top !== window.self) {
 }
 
 const API = (document.querySelector('meta[name="f3-api"]') || {}).content || 'https://api2.f3.sa';
-const MAX_BYTES = 256 * 1024;
+const MAX_PACKED = 10 * 1024 * 1024;  // per item, after packing and locking
+const MAX_RAW = 64 * 1024 * 1024;     // refuse to even pack more than this (protects the phone)
+const PREVIEW_CHARS = 40000;
+const PREVIEW_LINES = 400;
+const te = new TextEncoder();
 const HIGHLIGHT_MAX = 60 * 1024;
 const POLL_MS = 1500;
 const STORE_ROOM = 'f3drop.room.v2';
@@ -30,7 +35,8 @@ const el = {};
 for (const id of ['status', 'msg', 'msgText', 'retryBtn', 'room', 'pairBox', 'code', 'codeHint', 'shareBtn',
   'newCodeBtn', 'joinIn', 'joinBtn', 'pairedBox', 'pairedName', 'notMeBtn', 'paste', 'lang', 'size', 'sendBtn',
   'empty', 'list', 'roomLeft', 'newCodeBtn2', 'joinIn2', 'joinBtn2', 'endBtn', 'stats', 'statsClaim',
-  'statsLocked', 'statsLink', 'statsUrl', 'copyStats', 'statsBody', 'live', 'days', 'toast']) el[id] = $(id);
+  'statsLocked', 'statsLink', 'statsUrl', 'copyStats', 'statsBody', 'live', 'days', 'toast', 'pasteSendBtn', 'attachBtn',
+  'fileIn', 'compose']) el[id] = $(id);
 
 let room = null;          // { id, token, raw, key, expires }
 let code = null;          // { value, expires } — the code this device is showing
@@ -41,7 +47,8 @@ let polling = false;
 let busy = false;         // creating / joining / making a code
 let clockOffset = 0;
 let statsTimer = null;
-const cards = new Map();  // id -> { li, timer, item, text }
+let sending = false;
+const cards = new Map();  // id -> { li, timer, item, data }
 const gone = new Map();   // id -> time removed here (stops a late poll re-adding it)
 
 // ---------- helpers ----------
@@ -178,12 +185,18 @@ async function setRoom(r) {
   openRoomView();
 }
 
+function clearPaste() {
+  el.paste.value = '';
+  updateSize();
+}
+
 function forgetRoom() {
   room = null;
   code = null;
   others = [];
   othersKnown = false;
   clearCards();
+  clearPaste(); // nothing from the old room carries into the new one
   store(STORE_ROOM, null);
 }
 
@@ -340,39 +353,100 @@ function removeCard(id) {
   updateEmpty();
 }
 
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return Math.ceil(n / 1024) + ' KB';
+  return (n / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function lineCount(s) {
+  let n = 1;
+  for (let i = s.indexOf('\n'); i !== -1; i = s.indexOf('\n', i + 1)) n += 1;
+  return n;
+}
+
+// Big text: show the start only (drawing megabytes is slow on a phone). Copy still takes all of it.
+function previewOf(text) {
+  if (text.length <= PREVIEW_CHARS) {
+    let lines = 0;
+    let i = -1;
+    while ((i = text.indexOf('\n', i + 1)) !== -1) { if (++lines >= PREVIEW_LINES) break; }
+    if (lines < PREVIEW_LINES) return { shown: text, cut: false };
+    return { shown: text.slice(0, i), cut: true };
+  }
+  let cutAt = text.lastIndexOf('\n', PREVIEW_CHARS);
+  if (cutAt < PREVIEW_CHARS / 2) cutAt = PREVIEW_CHARS;
+  const head = text.slice(0, cutAt);
+  let lines = 0;
+  let j = -1;
+  while ((j = head.indexOf('\n', j + 1)) !== -1) { if (++lines >= PREVIEW_LINES) return { shown: head.slice(0, j), cut: true }; }
+  return { shown: head, cut: true };
+}
+
 function buildCard(item, data) {
   const li = document.createElement('li');
   li.className = 'card';
   li.dataset.id = item.id;
+  const isFile = !!(data && data.meta && data.meta.kind === 'file');
   const meta = document.createElement('div');
   meta.className = 'meta';
-  const lang = document.createElement('span');
-  lang.className = 'lang';
-  lang.textContent = data ? LANG_NAMES[data.lang] || 'Plain' : 'Cannot open';
+  const label = document.createElement('span');
+  label.className = 'lang';
+  if (!data) label.textContent = 'Cannot open';
+  else if (isFile) label.textContent = 'File · ' + fmtBytes(data.bytes.length);
+  else label.textContent = (LANG_NAMES[data.meta.lang] || 'Plain') + (data.text.length > 20000 ? ' · ' + fmtBytes(byteLength(data.text)) : '');
   const timer = document.createElement('span');
   timer.className = 'timer';
   timer.textContent = fmt(item.expires - now());
-  meta.append(lang, timer);
+  meta.append(label, timer);
+  li.append(meta);
 
-  const pre = document.createElement('pre');
-  const codeEl = document.createElement('code');
-  const langId = data && LANG_NAMES[data.lang] ? data.lang : 'plain';
-  codeEl.className = 'language-' + langId;
-  codeEl.textContent = data ? data.text : 'This item could not be unlocked on this device.';
-  pre.append(codeEl);
-  if (data && langId !== 'plain' && data.text.length <= HIGHLIGHT_MAX && window.Prism && window.Prism.languages[langId]) {
-    try { window.Prism.highlightElement(codeEl); } catch (_) { /* show plain */ }
+  if (isFile) {
+    const box = document.createElement('div');
+    box.className = 'file';
+    const name = document.createElement('div');
+    name.className = 'fname';
+    name.textContent = data.meta.name || 'file';
+    const sub = document.createElement('div');
+    sub.className = 'muted';
+    sub.textContent = (data.meta.type || 'unknown type') + ' · ' + fmtBytes(data.bytes.length);
+    box.append(name, sub);
+    li.append(box);
+  } else {
+    const pre = document.createElement('pre');
+    const codeEl = document.createElement('code');
+    const langId = data && LANG_NAMES[data.meta.lang] ? data.meta.lang : 'plain';
+    codeEl.className = 'language-' + langId;
+    if (!data) {
+      codeEl.textContent = 'This item could not be unlocked on this device.';
+      pre.append(codeEl);
+      li.append(pre);
+    } else {
+      const p = previewOf(data.text);
+      codeEl.textContent = p.shown;
+      pre.append(codeEl);
+      if (langId !== 'plain' && p.shown.length <= HIGHLIGHT_MAX && window.Prism && window.Prism.languages[langId]) {
+        try { window.Prism.highlightElement(codeEl); } catch (_) { /* show plain */ }
+      }
+      li.append(pre);
+      if (p.cut) {
+        const more = document.createElement('p');
+        more.className = 'muted more';
+        more.textContent = 'Showing the start only. All ' + lineCount(data.text).toLocaleString('en') + ' lines (' + fmtBytes(byteLength(data.text)) + ') are copied.';
+        li.append(more);
+      }
+    }
   }
 
   const actions = document.createElement('div');
   actions.className = 'actions';
   if (data) {
-    const copy = document.createElement('button');
-    copy.type = 'button';
-    copy.className = 'btn copy';
-    copy.textContent = 'Copy & delete';
-    copy.addEventListener('click', () => copyAndDelete(item.id));
-    actions.append(copy);
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'btn copy';
+    go.textContent = isFile ? 'Save & delete' : 'Copy & delete';
+    go.addEventListener('click', () => (isFile ? saveAndDelete(item.id) : copyAndDelete(item.id)));
+    actions.append(go);
   }
   const del = document.createElement('button');
   del.type = 'button';
@@ -380,25 +454,30 @@ function buildCard(item, data) {
   del.textContent = 'Delete';
   del.addEventListener('click', () => deleteOnly(item.id));
   actions.append(del);
-  li.append(meta, pre, actions);
+  li.append(actions);
   return { li, timer };
+}
+
+async function fetchItem(myRoom, id) {
+  const r = await api('GET', '/v1/rooms/' + myRoom.id + '/items/' + id, undefined, myRoom.token);
+  if (!r.ok) return null;
+  const box = await r.json();
+  try { return await unpack(await openBytes(myRoom.key, myRoom.id, box)); } catch (_) { return false; }
 }
 
 async function sync(list) {
   const myRoom = room;
   const live = new Set(list.map((i) => i.id));
-  for (const id of [...cards.keys()]) if (!live.has(id)) removeCard(id);
+  for (const [id, c] of [...cards]) if (!live.has(id) && !c.saved) removeCard(id); // saved files stay until their time is up
   let added = false;
   for (const item of list) {
     if (cards.has(item.id) || gone.has(item.id)) continue;
-    let data = null;
-    try {
-      data = await open(myRoom.key, myRoom.id, item);
-      if (!data || typeof data.text !== 'string') data = null;
-    } catch (_) { data = null; }
-    if (room !== myRoom || cards.has(item.id)) continue;
-    const { li, timer } = buildCard(item, data);
-    cards.set(item.id, { li, timer, item, text: data ? data.text : null });
+    const data = await fetchItem(myRoom, item.id);
+    if (data === null) continue; // gone meanwhile; the next poll tidies up
+    if (room !== myRoom || cards.has(item.id) || gone.has(item.id)) continue;
+    const ok = data && data.meta && (typeof data.text === 'string' || data.bytes);
+    const { li, timer } = buildCard(item, ok ? data : null);
+    cards.set(item.id, { li, timer, item, data: ok ? data : null });
     added = true;
   }
   if (added) for (const item of list) { const c = cards.get(item.id); if (c) el.list.append(c.li); }
@@ -461,59 +540,128 @@ function tick() {
   }
 }
 
+async function deleteOnServer(id, how) {
+  try {
+    const r = await roomApi('DELETE', '/items/' + id + (how ? '?copied=1' : ''));
+    return r.ok || r.status === 404;
+  } catch (_) { return false; }
+}
+
 function copyAndDelete(id) {
   const c = cards.get(id);
-  if (!c || c.text === null) return;
-  copyText(c.text).then(async (ok) => {
+  if (!c || !c.data || typeof c.data.text !== 'string') return;
+  copyText(c.data.text).then(async (ok) => {
     if (!ok) { toast('Copy was blocked. Nothing was deleted.'); return; }
     removeCard(id);
-    try {
-      const r = await roomApi('DELETE', '/items/' + id + '?copied=1');
-      toast(r.ok || r.status === 404 ? 'Copied. Deleted on both devices.' : 'Copied. Delete failed; it expires within 5 minutes.');
-    } catch (_) {
-      toast('Copied. Server not reached; it expires within 5 minutes.');
-    }
+    toast((await deleteOnServer(id, 'copied')) ? 'Copied. Deleted on both devices.' : 'Copied. Delete failed; it expires within 5 minutes.');
+  });
+}
+
+// Files: download, then delete on both devices. The file stays in this page's memory until its
+// 5 minutes are up, so "Save again" works if the phone's save sheet was dismissed.
+function saveAndDelete(id) {
+  const c = cards.get(id);
+  if (!c || !c.data || !c.data.bytes) return;
+  const { meta, bytes } = c.data;
+  const blob = new Blob([bytes], { type: meta.type || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (meta.name || 'file').slice(0, 200);
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60 * 1000);
+  if (c.saved) return toast('Saved again.');
+  c.saved = true;
+  const btn = c.li.querySelector('.copy');
+  if (btn) btn.textContent = 'Save again';
+  const del = c.li.querySelector('.del');
+  if (del) del.remove();
+  c.li.classList.add('done');
+  deleteOnServer(id, 'copied').then((ok) => {
+    gone.set(id, Date.now());
+    toast(ok ? 'Saved. Deleted on both devices.' : 'Saved. Delete failed; it expires within 5 minutes.');
   });
 }
 
 async function deleteOnly(id) {
   removeCard(id);
-  try {
-    const r = await roomApi('DELETE', '/items/' + id);
-    toast(r.ok || r.status === 404 ? 'Deleted on both devices.' : 'Delete failed; it expires within 5 minutes.');
-  } catch (_) {
-    toast('Server not reached; it expires within 5 minutes.');
-  }
+  toast((await deleteOnServer(id)) ? 'Deleted on both devices.' : 'Delete failed; it expires within 5 minutes.');
 }
 
 function updateSize() {
   const n = byteLength(el.paste.value);
-  el.size.textContent = n ? (n < 1024 ? n + ' B' : Math.ceil(n / 1024) + ' KB') + (n > MAX_BYTES ? ' (max 256 KB)' : '') : '';
+  el.size.textContent = n ? fmtBytes(n) : '';
 }
 
-async function sendNow() {
-  if (!room) return;
-  const text = el.paste.value;
-  if (!text.trim()) return toast('Paste something first.');
-  if (byteLength(text) > MAX_BYTES) return toast('Too big. Max 256 KB.');
-  el.sendBtn.disabled = true;
+function setSending(on, label) {
+  sending = on;
+  for (const b of [el.sendBtn, el.pasteSendBtn, el.attachBtn]) b.disabled = on;
+  el.sendBtn.textContent = on ? (label || 'Sending…') : 'Send';
+}
+
+// Pack, lock and send one item. Returns true when the server took it.
+async function sendPacked(meta, body, what) {
+  if (!room) return false;
+  if (body.length > MAX_RAW) { toast('Too big: ' + fmtBytes(body.length) + '. Max 10 MB after packing.'); return false; }
+  setSending(true, 'Packing…');
   try {
-    const box = await seal(room.key, room.id, { v: 2, lang: el.lang.value, text });
+    const packed = await pack(meta, body);
+    if (packed.length + 16 > MAX_PACKED) {
+      toast('Too big: ' + fmtBytes(packed.length) + ' after packing. Max 10 MB.');
+      return false;
+    }
+    setSending(true, 'Sending ' + fmtBytes(packed.length) + '…');
+    const box = await sealBytes(room.key, room.id, packed);
     const r = await roomApi('POST', '/items', box);
     if (r.status === 201) {
-      el.paste.value = '';
-      updateSize();
-      toast(others.length ? 'Sent. Gone after copy, or in 5 minutes.' : 'Sent. Pair your other device within 5 minutes to get it.');
+      const saved = body.length > packed.length * 1.5 ? ' (packed ' + fmtBytes(body.length) + ' → ' + fmtBytes(packed.length) + ')' : '';
+      toast((others.length ? what + ' sent' : what + ' sent. Pair your other device within 5 minutes to get it') + saved + '.');
       poll();
-    } else if (r.status === 413) toast('Too big. Max 256 KB.');
-    else if (r.status === 409) toast('Room full. Copy or delete some first.');
+      return true;
+    }
+    if (r.status === 413) toast('Too big for the server. Max 10 MB after packing.');
+    else if (r.status === 409) toast('Room full. Copy, save or delete some first.');
     else if (r.status === 503) toast('Server is full right now. Try again soon.');
     else if (r.status === 401 || r.status === 404) roomLost(r.status);
     else toast('Could not send. Try again.');
+    return false;
   } catch (_) {
     toast('Cannot reach the server.');
+    return false;
   } finally {
-    el.sendBtn.disabled = false;
+    setSending(false);
+  }
+}
+
+async function sendNow() {
+  const text = el.paste.value;
+  if (!text.trim()) return toast('Paste something first.');
+  const ok = await sendPacked({ v: 3, kind: 'text', lang: el.lang.value }, te.encode(text), 'Sent');
+  if (ok) { el.paste.value = ''; updateSize(); }
+}
+
+// Reads the clipboard directly, so a huge paste never has to be drawn in the box.
+async function pasteAndSend() {
+  if (sending) return;
+  let text = '';
+  try {
+    text = await navigator.clipboard.readText();
+  } catch (_) {
+    return toast('This browser blocked reading the clipboard. Paste into the box instead.');
+  }
+  if (!text || !text.trim()) return toast('The clipboard is empty.');
+  await sendPacked({ v: 3, kind: 'text', lang: el.lang.value }, te.encode(text), fmtBytes(byteLength(text)));
+}
+
+async function sendFiles(files) {
+  for (const f of files) {
+    if (f.size > MAX_RAW) { toast(f.name + ' is too big (' + fmtBytes(f.size) + '). Max 10 MB.'); continue; }
+    let bytes;
+    try { bytes = new Uint8Array(await f.arrayBuffer()); } catch (_) { toast('Could not read ' + f.name + '.'); continue; }
+    await sendPacked({ v: 3, kind: 'file', name: String(f.name || 'file').slice(0, 200), type: String(f.type || '').slice(0, 100), size: f.size }, bytes, f.name);
   }
 }
 
@@ -688,6 +836,21 @@ el.paste.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendNow(); }
 });
 el.sendBtn.addEventListener('click', sendNow);
+el.pasteSendBtn.addEventListener('click', pasteAndSend);
+el.attachBtn.addEventListener('click', () => el.fileIn.click());
+el.fileIn.addEventListener('change', () => {
+  const files = [...el.fileIn.files];
+  el.fileIn.value = '';
+  if (files.length) sendFiles(files);
+});
+el.compose.addEventListener('dragover', (e) => { e.preventDefault(); el.compose.classList.add('drop'); });
+el.compose.addEventListener('dragleave', () => el.compose.classList.remove('drop'));
+el.compose.addEventListener('drop', (e) => {
+  e.preventDefault();
+  el.compose.classList.remove('drop');
+  const files = [...((e.dataTransfer && e.dataTransfer.files) || [])];
+  if (files.length) sendFiles(files);
+});
 el.lang.addEventListener('change', () => store('f3drop.lang', el.lang.value));
 
 document.addEventListener('visibilitychange', () => {
@@ -696,6 +859,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('hashchange', route);
 setInterval(tick, 1000);
 
+el.paste.value = ''; // browsers may restore form text after a reload; never bring old code back
 if (!(location.hash === '#stats' || location.hash.startsWith('#s='))) {
   api('POST', '/v1/hello', { dev: DEV }).catch(() => {}); // counted, nothing else kept
 }

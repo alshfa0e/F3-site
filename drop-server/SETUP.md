@@ -7,6 +7,8 @@ Code is locked on the device before it leaves. The server only holds locked text
 1. Open `https://f3.sa/code/` on the first device (iPhone or PC). It shows a code, for example `K7QH`.
 2. On the other device, open `https://f3.sa/code/` and type `K7QH` under **Have a code from another device?** → **Join**. Or tap **Share link** and open the link on the other device.
 3. Both show **Paired with …**. Paste, **Send**, then **Copy & delete** on the other side.
+4. Big paste? Copy it, then tap **Paste & send**. It sends straight from the clipboard without loading the text into the box (much faster on iPhone).
+5. Files: tap **Attach file** (or drag files onto the box on a computer). The other side taps **Save & delete**. "Save again" works on that device until the 5 minutes are up.
 
 Rules:
 - The code works for **10 minutes, once**. Need another? Tap **New code**.
@@ -23,7 +25,7 @@ Rules:
 ## Limits that stop abuse
 - 10 new rooms per network per day. 200 rooms open at once.
 - Wrong codes: 10 per network per hour, 30 from everyone per hour. After that, joining pauses for up to an hour.
-- 30 items and 4 MB per room. 256 KB per item.
+- Up to 10 MB per item after packing (code usually packs 5 to 10 times smaller; photos, PDFs and zips do not). 30 items and 40 MB per room; 100 MB on the server in total.
 
 ## Server
 - Already running on Oracle (Riyadh) at `api2.f3.sa`. It updates itself from GitHub `main` within 15 minutes of a merged pull request.

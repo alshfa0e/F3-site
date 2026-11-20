@@ -80,3 +80,47 @@ test('stats token and hash', async () => {
   assert.match(await C.sha256hex(t), /^[0-9a-f]{64}$/);
   assert.notEqual(C.randomToken(), t);
 });
+
+test('packing: big code shrinks a lot and comes back exactly', async () => {
+  let big = '';
+  let i = 0;
+  while (big.length < 2_000_000) big += `function f${i}(a, b) { return a * ${i} + b; } // line ${i++}\n`;
+  const p = await C.pack({ v: 3, kind: 'text', lang: 'javascript' }, new TextEncoder().encode(big));
+  assert.equal(p[0], 1, 'packed with gzip');
+  assert.ok(p.length < big.length / 4, 'at least 4x smaller: ' + p.length);
+  const key = await C.importRoomKey(C.newRoomKeyRaw());
+  const box = await C.sealBytes(key, 'room-1234567890ab', p);
+  const out = await C.unpack(await C.openBytes(key, 'room-1234567890ab', box));
+  assert.equal(out.text, big);
+  assert.equal(out.meta.lang, 'javascript');
+});
+
+test('packing: files come back byte for byte; random bytes are not gzipped', async () => {
+  const bytes = new Uint8Array(300000);
+  for (let o = 0; o < bytes.length; o += 65536) crypto.getRandomValues(bytes.subarray(o, o + 65536));
+  const p = await C.pack({ v: 3, kind: 'file', name: 'report.pdf', type: 'application/pdf', size: bytes.length }, bytes);
+  assert.equal(p[0], 0, 'no gain, so stored as is');
+  const out = await C.unpack(p);
+  assert.equal(out.meta.name, 'report.pdf');
+  assert.equal(out.meta.type, 'application/pdf');
+  assert.deepEqual(out.bytes, bytes);
+});
+
+test('packing: items from the previous version still open', async () => {
+  const key = await C.importRoomKey(C.newRoomKeyRaw());
+  const old = await C.seal(key, 'room-1234567890ab', { v: 2, lang: 'sql', text: 'SELECT 1;' });
+  const out = await C.unpack(await C.openBytes(key, 'room-1234567890ab', old));
+  assert.equal(out.text, 'SELECT 1;');
+  assert.equal(out.meta.lang, 'sql');
+});
+
+test('packing: refuses junk and oversized unpacking', async () => {
+  await assert.rejects(C.unpack(new Uint8Array([9, 1, 2, 3])));
+  await assert.rejects(C.unpack(new Uint8Array([0, 0, 0, 0, 99, 1])));
+  // a tiny gzip that would expand past the cap
+  const zeros = new Uint8Array(C.MAX_UNPACKED + 1024);
+  const bomb = await C.pack({ v: 3, kind: 'file', name: 'z', type: '', size: zeros.length }, zeros);
+  assert.equal(bomb[0], 1);
+  assert.ok(bomb.length < 1_000_000);
+  await assert.rejects(C.unpack(bomb), /too_big/);
+});

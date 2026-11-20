@@ -52,7 +52,7 @@
       <button id="notMeBtn" class="btn line small danger" type="button">Not me – end room</button>
     </div>
 
-    <div class="compose">
+    <div id="compose" class="compose">
       <textarea id="paste" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" placeholder="Paste code here" aria-label="Code to send"></textarea>
       <div class="row">
         <select id="lang" aria-label="Language">
@@ -73,7 +73,12 @@
         <span id="size" class="muted"></span>
         <button id="sendBtn" class="btn" type="button">Send</button>
       </div>
-      <p class="hint muted">Copy deletes it on both devices. Anything not copied is gone after 5 minutes.</p>
+      <div class="row2 tools">
+        <button id="pasteSendBtn" class="btn line small" type="button">Paste &amp; send</button>
+        <button id="attachBtn" class="btn line small" type="button">Attach file</button>
+        <input id="fileIn" class="offscreen" type="file" multiple tabindex="-1" aria-hidden="true">
+      </div>
+      <p class="hint muted">Copy or save deletes it on both devices. Anything not taken is gone after 5 minutes. Up to 10 MB each, after packing.</p>
     </div>
     <p id="empty" class="muted">Nothing here.</p>
     <ul id="list" class="list"></ul>

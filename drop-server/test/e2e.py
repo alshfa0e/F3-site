@@ -166,8 +166,12 @@ try:
         # ---- T4: server holds only locked text ----
         rec = room_rec(phone)
         srv_view = get(f"/v1/rooms/{rec['id']}", rec["token"])
-        blob = json.dumps(srv_view)
-        check("T4 server holds only locked text", len(srv_view.get("items", [])) == 1 and "hello" not in blob and "def " not in blob)
+        one = srv_view.get("items", [{}])[0]
+        srv_item = get(f"/v1/rooms/{rec['id']}/items/{one.get('id')}", rec["token"])
+        blob = json.dumps(srv_view) + json.dumps(srv_item)
+        check("T4 server holds only locked text", len(srv_view.get("items", [])) == 1 and len(srv_item.get("ct", "")) > 50
+              and "hello" not in blob and "def " not in blob)
+        check("T4 polling list carries no item bytes", "ct" not in json.dumps(srv_view))
 
         # ---- T5: copy on iPhone deletes on both ----
         phone.click(".card .copy")
@@ -206,6 +210,56 @@ try:
         got = wait_for(lambda: phone.locator(".card").count() == 0 and pc.locator(".card").count() == 0, timeout=ITEM_TTL_MS / 1000 + 6)
         check(f"T9 not copied: gone on both after {ITEM_TTL_MS // 1000} s (5 min live)", got is not None)
 
+        # ---- T16: 2 million characters with Paste & send (no drawing in the box) ----
+        big_lines, i = [], 0
+        while sum(len(x) for x in big_lines) < 2_000_000:
+            big_lines.append(f"    total_{i} = compute(items[{i}], rate={i % 97}) + offset  # step {i}\n")
+            i += 1
+        BIG = "".join(big_lines)
+        pc.evaluate("t => navigator.clipboard.writeText(t)", BIG)
+        t0 = time.time()
+        pc.click("#pasteSendBtn")
+        got = wait_for(lambda: phone.locator(".card").count() == 1, timeout=30)
+        check("T16 Paste & send: 2 million characters reach the iPhone", got is not None, f"{len(BIG):,} chars in {time.time() - t0:.1f}s")
+        check("T16 the paste box was never filled", pc.input_value("#paste") == "")
+        check("T16 iPhone shows the start only, with a note", "Showing the start only" in phone.inner_text(".card"))
+        sw = phone.evaluate("[document.documentElement.scrollWidth, window.innerWidth]")
+        check("T16 still no sideways scroll", sw[0] <= sw[1])
+        t0 = time.time()
+        phone.click(".card .copy")
+        clip = phone.evaluate("navigator.clipboard.readText()")
+        check("T16 Copy & delete copies all 2 million characters exactly", clip == BIG, f"{time.time() - t0:.1f}s")
+        wait_for(lambda: pc.locator(".card").count() == 0 and phone.locator(".card").count() == 0, timeout=6)
+        st_now = get("/v1/stats", STATS_TOK)
+
+        # ---- T17: attach a file on the iPhone, save it on the PC ----
+        FILE = os.urandom(3 * 1024 * 1024)
+        phone.set_input_files("#fileIn", files=[{"name": "site report.pdf", "mimeType": "application/pdf", "buffer": FILE}])
+        got = wait_for(lambda: pc.locator(".card").count() == 1, timeout=30)
+        check("T17 file attached on iPhone appears on the PC", got is not None and "site report.pdf" in pc.inner_text(".card"),
+              f"{got:.1f}s" if got else "not seen")
+        check("T17 shows type and size", "application/pdf" in pc.inner_text(".card") and "3.0 MB" in pc.inner_text(".card"))
+        with pc.expect_download() as dl:
+            pc.click(".card .copy")
+        d = dl.value
+        saved = open(d.path(), "rb").read()
+        check("T17 Save & delete downloads the exact file", d.suggested_filename == "site report.pdf" and saved == FILE)
+        got = wait_for(lambda: phone.locator(".card").count() == 0, timeout=6)
+        rec = room_rec(pc)
+        check("T17 then it is gone on the other device and the server", got is not None
+              and not get(f"/v1/rooms/{rec['id']}", rec["token"]).get("items"))
+        time.sleep(3)
+        check("T17 'Save again' stays on this device (after more polls)", pc.locator(".card").count() == 1 and "Save again" in pc.inner_text(".card"))
+        with pc.expect_download() as dl2:
+            pc.click(".card .copy")
+        check("T17 Save again gives the same file", open(dl2.value.path(), "rb").read() == FILE)
+
+        # ---- T18: too big is refused clearly ----
+        pc.set_input_files("#fileIn", files=[{"name": "huge.bin", "mimeType": "application/octet-stream", "buffer": os.urandom(11 * 1024 * 1024)}])
+        got = wait_for(lambda: "Too big" in pc.inner_text("#toast"), timeout=20)
+        check("T18 11 MB that will not pack is refused with a clear message", got is not None, pc.inner_text("#toast"))
+        check("T18 nothing was sent", phone.locator(".card").count() == 0)
+
         # ---- T10: friend gets his own room, joins with a shared link ----
         friend.goto(f"{SITE}/code/")
         fcode = code_of(friend)
@@ -219,7 +273,8 @@ try:
         wait_for(lambda: friend_pc.locator(".card").count() == 1, timeout=10)
         time.sleep(2)
         check("T10 friend's item reaches his Mac, never your devices",
-              friend_pc.locator(".card").count() == 1 and phone.locator(".card").count() == 0 and pc.locator(".card").count() == 0)
+              friend_pc.locator(".card").count() == 1 and phone.locator(".card").count() == 0 and pc.locator(".card:not(.done)").count() == 0
+              and FRIEND not in pc.inner_text("#list") and FRIEND not in phone.inner_text("#list"))
 
         # ---- T11: wrong code ----
         friend_pc.click(".settings summary")
@@ -230,6 +285,7 @@ try:
 
         # ---- T12: Not me - end room ----
         old_room = room_rec(phone)["id"]
+        phone.fill("#paste", "left over text from the old room")
         phone.click("#notMeBtn")
         phone.click("#notMeBtn")
         new_code = code_of(phone)
@@ -237,6 +293,7 @@ try:
         check("T12 'Not me - end room': room ends for both, iPhone gets a new code",
               got is not None and room_rec(phone)["id"] != old_room and len(new_code) == 4)
         check("T12 PC is out of the old room", get(f"/v1/rooms/{old_room}", room_rec(pc)["token"]).get("status") == 404)
+        check("T12 the new room starts with an empty paste box", phone.input_value("#paste") == "")
 
         # ---- T13: stats show counts only ----
         st = get("/v1/stats", STATS_TOK)
@@ -245,9 +302,9 @@ try:
         check("T13 stats count visits by device", today["visits"] >= 4 and today["dev"].get("iphone", 0) >= 1
               and today["dev"].get("windows", 0) >= 1 and today["dev"].get("android", 0) >= 1, json.dumps(today["dev"]))
         check("T13 stats count rooms, joins, wrong codes, sends, copies, expiries, ends",
-              today["rooms"] >= 4 and today["joins"] >= 2 and today["wrong"] >= 1 and today["sent"] >= 4
+              today["rooms"] >= 4 and today["joins"] >= 2 and today["wrong"] >= 1 and today["sent"] >= 6
               and today["copied"] >= 2 and today["expired"] >= 1 and today["ended"] >= 1, json.dumps(today))
-        check("T13 stats hold no addresses and no content", "127.0.0.1" not in text and "hello" not in text and FRIEND not in text)
+        check("T13 stats hold no addresses and no content", "127.0.0.1" not in text and "hello" not in text and FRIEND not in text and "site report" not in text)
         pc.goto(f"{SITE}/code/#stats")
         pc.wait_for_selector("#statsBody:not([hidden])")
         check("T13 stats page shows it", "visit" in pc.inner_text("#days") and "open" in pc.inner_text("#live"))

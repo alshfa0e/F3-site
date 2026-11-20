@@ -135,3 +135,11 @@ select { width: auto; padding: 10px 12px; }
 
 .bar .right { display: flex; align-items: center; gap: 12px; }
 .theme { font: inherit; font-size: 13px; color: var(--muted); background: transparent; border: 1.5px solid var(--line); border-radius: 999px; padding: 4px 10px; min-height: 32px; cursor: pointer; }
+
+/* big items and files */
+.tools { margin-top: 10px; }
+.compose.drop { outline: 3px dashed var(--gold); outline-offset: 3px; }
+.file { background: var(--paper); border-radius: 10px; padding: 12px; }
+.fname { font-weight: 600; word-break: break-all; }
+.more { margin-top: 6px; font-size: 13px; }
+.card.done { opacity: .75; }

@@ -20,12 +20,12 @@ const CFG = {
   itemTtlMs: num(process.env.ITEM_TTL_MS, 5 * 60 * 1000),       // uncopied snippets die after 5 minutes
   roomTtlMs: num(process.env.ROOM_TTL_MS, 24 * 60 * 60 * 1000),  // rooms end after one day
   codeTtlMs: num(process.env.CODE_TTL_MS, 10 * 60 * 1000),       // join codes work for 10 minutes, once
-  maxBody: num(process.env.MAX_BODY, 400 * 1024),
+  maxBody: num(process.env.MAX_BODY, 14 * 1024 * 1024),       // one item: 10 MB locked, as base64 text
   maxRooms: num(process.env.MAX_ROOMS, 200),
   roomsPerIpDay: num(process.env.ROOMS_PER_IP_DAY, 10),
   maxItemsPerRoom: num(process.env.MAX_ITEMS, 30),
-  maxRoomBytes: num(process.env.MAX_ROOM_BYTES, 4 * 1024 * 1024),
-  maxTotal: num(process.env.MAX_TOTAL, 64 * 1024 * 1024),
+  maxRoomBytes: num(process.env.MAX_ROOM_BYTES, 40 * 1024 * 1024),
+  maxTotal: num(process.env.MAX_TOTAL, 100 * 1024 * 1024),   // all rooms; the service may use 300 MB in total
   joinFailsPerIp: num(process.env.JOIN_FAILS_PER_IP, 10),        // wrong codes per address per hour
   joinFailsGlobal: num(process.env.JOIN_FAILS_GLOBAL, 30),       // wrong codes from everyone per hour
   joinWindowMs: num(process.env.JOIN_WINDOW_MS, 60 * 60 * 1000),
@@ -204,15 +204,16 @@ function send(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-function readJson(req) {
+// Small requests get a small cap; only sending an item may use the big one.
+function readJson(req, limit = 16 * 1024) {
   return new Promise((resolve) => {
-    if (Number(req.headers['content-length'] || 0) > CFG.maxBody) return resolve({ error: 413 });
+    if (Number(req.headers['content-length'] || 0) > limit) return resolve({ error: 413 });
     let size = 0;
     let tooBig = false;
     const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size > CFG.maxBody) tooBig = true;
+      if (size > limit) tooBig = true;
       else chunks.push(c);
     });
     req.on('end', () => {
@@ -235,8 +236,9 @@ function roomView(room, me) {
     me: me.dev,
     others: room.members.filter((m) => m !== me).map((m) => ({ dev: m.dev, joined: m.joined })),
     code: room.code ? { expires: room.code.expires, mine: room.code.by === me.tok } : null,
+    // Only the list here. Each device fetches an item's locked bytes once, by id, so polling stays light.
     items: [...room.items.entries()]
-      .map(([id, it]) => ({ id, iv: it.iv, ct: it.ct, created: it.created, expires: it.expires }))
+      .map(([id, it]) => ({ id, size: it.size, created: it.created, expires: it.expires }))
       .sort((a, b) => b.created - a.created),
   };
 }
@@ -401,7 +403,7 @@ async function handle(req, res) {
   }
 
   if (sub === '/items' && req.method === 'POST') {
-    const body = await readJson(req);
+    const body = await readJson(req, CFG.maxBody);
     if (body.error) return send(res, body.error, { error: body.error === 413 ? 'too_big' : 'bad_request' });
     const { iv, ct } = body.value;
     if (typeof iv !== 'string' || iv.length !== 16 || !B64URL.test(iv)) return send(res, 400, { error: 'bad_request' });
@@ -417,6 +419,12 @@ async function handle(req, res) {
     totalBytes += size;
     bump('sent');
     return send(res, 201, { id, created, expires });
+  }
+
+  if (sub.startsWith('/items/') && req.method === 'GET') {
+    const it = ID_RE.test(m[3]) ? room.items.get(m[3]) : null;
+    if (!it) return send(res, 404, { error: 'gone' });
+    return send(res, 200, { id: m[3], iv: it.iv, ct: it.ct, created: it.created, expires: it.expires });
   }
 
   if (sub.startsWith('/items/') && req.method === 'DELETE') {
@@ -436,7 +444,7 @@ const server = http.createServer((req, res) => {
   });
 });
 server.headersTimeout = 15000;
-server.requestTimeout = 30000;
+server.requestTimeout = 5 * 60 * 1000; // a 10 MB upload on a slow phone link can take minutes
 server.on('clientError', (_e, socket) => socket.destroy());
 
 setInterval(sweep, CFG.sweepMs).unref();

@@ -158,9 +158,28 @@ test('send, list, copy-delete: gone for both devices', async () => {
   const la = await call('GET', `/v1/rooms/${a.room}`, { token: a.token });
   assert.equal(la.json.items.length, 1);
   assert.equal(la.json.items[0].id, s.json.id);
+  assert.ok(!('ct' in la.json.items[0]) && !('iv' in la.json.items[0]), 'list is light: no item bytes');
+  assert.ok(la.json.items[0].size > 0);
+  const one = await call('GET', `/v1/rooms/${a.room}/items/${s.json.id}`, { token: a.token });
+  assert.equal(one.status, 200);
+  assert.ok(one.json.ct.length > 20 && one.json.iv.length === 16, 'item bytes come from the item address');
   assert.equal((await call('DELETE', `/v1/rooms/${a.room}/items/${s.json.id}?copied=1`, { token: a.token })).status, 204);
   assert.equal((await call('GET', `/v1/rooms/${a.room}`, { token: b.token })).json.items.length, 0);
   assert.equal((await call('DELETE', `/v1/rooms/${a.room}/items/${s.json.id}`, { token: b.token })).status, 404);
+  assert.equal((await call('GET', `/v1/rooms/${a.room}/items/${s.json.id}`, { token: b.token })).status, 404, 'gone after delete');
+});
+
+test('item bytes: another room cannot fetch them', async () => {
+  const one = await pair();
+  const two = await pair();
+  const s = await call('POST', `/v1/rooms/${one.a.room}/items`, { token: one.a.token, body: ivct() });
+  assert.equal((await call('GET', `/v1/rooms/${one.a.room}/items/${s.json.id}`, { token: two.a.token })).status, 401);
+});
+
+test('small requests keep a small size cap', async () => {
+  const big = JSON.stringify({ tag: rnd(32), pad: 'x'.repeat(20000) });
+  assert.equal((await call('POST', '/v1/join', { raw: big })).status, 413);
+  assert.equal((await call('POST', '/v1/rooms', { raw: big })).status, 413);
 });
 
 test('uncopied items are gone after the item time', async () => {
@@ -265,6 +284,20 @@ test('stats survive a restart; content does not', async () => {
   call = client(A);
   assert.equal((await call('GET', '/health')).json.stats, true, 'claim kept');
   assert.equal((await call('GET', `/v1/rooms/${a.room}`, { token: a.token })).status, 404, 'rooms are memory only');
+});
+
+test('server 2: big items up to 10 MB locked, room and server caps', async () => {
+  const a = await newRoom(call2);
+  const big = { iv: rnd(12), ct: crypto.randomBytes(10 * 1024 * 1024).toString('base64url') };
+  const r = await call2('POST', `/v1/rooms/${a.room}/items`, { token: a.token, body: big });
+  assert.equal(r.status, 201, 'a 10 MB item is accepted');
+  const got = await call2('GET', `/v1/rooms/${a.room}/items/${r.json.id}`, { token: a.token });
+  assert.equal(got.json.ct.length, big.ct.length, 'and comes back whole');
+  const tooBig = { iv: rnd(12), ct: crypto.randomBytes(11 * 1024 * 1024).toString('base64url') };
+  assert.equal((await call2('POST', `/v1/rooms/${a.room}/items`, { token: a.token, body: tooBig })).status, 413);
+  const list = await call2('GET', `/v1/rooms/${a.room}`, { token: a.token });
+  assert.ok(list.text.length < 2000, 'polling stays light even with 10 MB waiting');
+  await call2('DELETE', `/v1/rooms/${a.room}`, { token: a.token });
 });
 
 test('server 2: rooms end after the room time', async () => {
